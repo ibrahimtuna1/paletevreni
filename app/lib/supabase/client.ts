@@ -1,14 +1,12 @@
-// lib/supabase/client.ts
 import { createClient } from "@supabase/supabase-js";
-import type { Database } from "./types";
-
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+// Tek bir client oluştur ve export et
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    persistSession: true,
-    autoRefreshToken: true,
+    persistSession: false, // admin panel için gerek yok
+    autoRefreshToken: false,
   },
 });
