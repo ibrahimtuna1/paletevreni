@@ -1,8 +1,7 @@
-// app/components/Hero.tsx
 "use client";
 
 import Image from "next/image";
-import { useMemo } from "react";
+import { useMemo, type CSSProperties } from "react";
 
 export default function Hero() {
   // Twinkle noktaları için hafif rastgele ama sabit konumlar
@@ -24,25 +23,23 @@ export default function Hero() {
       <div className="absolute inset-0 bg-gradient-to-br from-pink-800 via-fuchsia-900 to-purple-950" />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0,transparent_55%,rgba(0,0,0,0.35)_100%)]" />
 
-      {/* Partikül katman 1: kayan mikronokta dokusu */}
+      {/* Partikül katman 1 */}
       <div className="pointer-events-none absolute inset-0 opacity-40 [background:radial-gradient(circle,rgba(255,255,255,0.12)_1px,transparent_1.2px)] [background-size:18px_18px] [animation:floatY_24s_linear_infinite]" />
 
-      {/* Partikül katman 2: twinkle noktaları (yanıp sönme) */}
+      {/* Partikül katman 2: twinkle */}
       <div className="pointer-events-none absolute inset-0">
         {dots.map((d, i) => (
           <span
             key={i}
             className="absolute rounded-full bg-white/80 [animation:twinkle_var_linear_infinite]"
-            style={
-              {
-                left: d.left,
-                top: d.top,
-                width: `${d.size}px`,
-                height: `${d.size}px`,
-                animationDelay: d.delay,
-                animationDuration: d.dur,
-              } as React.CSSProperties
-            }
+            style={{
+              left: d.left,
+              top: d.top,
+              width: `${d.size}px`,
+              height: `${d.size}px`,
+              animationDelay: d.delay,
+              animationDuration: d.dur,
+            } as CSSProperties}
           />
         ))}
       </div>
@@ -61,13 +58,7 @@ export default function Hero() {
             <div className="absolute -inset-2 -z-10 rounded-[2.25rem] bg-gradient-to-br from-pink-300/30 via-fuchsia-300/30 to-purple-300/30 blur-2xl" />
             <div className="relative overflow-hidden rounded-[2rem] border border-white/15 bg-white/5 p-4 backdrop-blur">
               <div className="relative aspect-[4/5] w-full">
-                <Image
-                  src="/images/hero-figure.png"
-                  alt="Palet Evreni"
-                  fill
-                  priority
-                  className="object-contain"
-                />
+                <Image src="/images/hero-figure.png" alt="Palet Evreni" fill priority className="object-contain" />
               </div>
             </div>
           </div>
@@ -88,72 +79,37 @@ export default function Hero() {
           </h1>
 
           <p className="mt-5 max-w-xl text-base text-white/85 sm:text-lg">
-            Canlı dersler, ödev geri bildirimi ve portfolyo koçluğu. Evinden çıkmadan
-            yaratıcı dünyanı büyüt.
+            Canlı dersler, ödev geri bildirimi ve portfolyo koçluğu. Evinden çıkmadan yaratıcı dünyanı büyüt.
           </p>
 
           <div className="mt-8 flex flex-col gap-4 sm:flex-row">
-            <a
-              href="#auth"
-              className="rounded-full bg-pink-500 px-8 py-4 text-center text-lg font-semibold text-white shadow-xl shadow-pink-500/30 transition hover:-translate-y-0.5 hover:bg-pink-400"
-            >
+            <a href="#auth" className="rounded-full bg-pink-500 px-8 py-4 text-center text-lg font-semibold text-white shadow-xl shadow-pink-500/30 transition hover:-translate-y-0.5 hover:bg-pink-400">
               Hemen Başla →
             </a>
-            <a
-              href="#programlar"
-              className="rounded-full border border-white/25 bg-white/10 px-8 py-4 text-center text-lg font-semibold text-white/90 backdrop-blur transition hover:bg-white/20"
-            >
+            <a href="#programlar" className="rounded-full border border-white/25 bg-white/10 px-8 py-4 text-center text-lg font-semibold text-white/90 backdrop-blur transition hover:bg-white/20">
               Programları Gör
             </a>
           </div>
 
-          {/* Dot göstergesi (tek slayt dummy) */}
           <div className="mt-8 flex items-center gap-2">
-            <Dot active />
-            <Dot />
-            <Dot />
-            <Dot />
+            <Dot active /><Dot /><Dot /><Dot />
           </div>
         </div>
       </div>
 
-      {/* (opsiyonel) oklar */}
-      <button
-        aria-label="Önceki"
-        className="absolute left-3 top-1/2 hidden -translate-y-1/2 rounded-full bg-white/20 p-3 text-white backdrop-blur transition hover:bg-white/30 md:inline-flex"
-      >
-        ‹
-      </button>
-      <button
-        aria-label="Sonraki"
-        className="absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-full bg-white/20 p-3 text-white backdrop-blur transition hover:bg-white/30 md:inline-flex"
-      >
-        ›
-      </button>
+      {/* oklar (opsiyonel) */}
+      <button aria-label="Önceki" className="absolute left-3 top-1/2 hidden -translate-y-1/2 rounded-full bg-white/20 p-3 text-white backdrop-blur transition hover:bg-white/30 md:inline-flex">‹</button>
+      <button aria-label="Sonraki" className="absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-full bg-white/20 p-3 text-white backdrop-blur transition hover:bg-white/30 md:inline-flex">›</button>
 
-      {/* Animasyonlar */}
       <style jsx>{`
         @keyframes floatY {
-          0% {
-            transform: translateY(0);
-          }
-          50% {
-            transform: translateY(-8px);
-          }
-          100% {
-            transform: translateY(0);
-          }
+          0% { transform: translateY(0); }
+          50% { transform: translateY(-8px); }
+          100% { transform: translateY(0); }
         }
         @keyframes twinkle_var {
-          0%,
-          100% {
-            opacity: 0.2;
-            transform: scale(1);
-          }
-          50% {
-            opacity: 1;
-            transform: scale(1.6);
-          }
+          0%, 100% { opacity: 0.2; transform: scale(1); }
+          50% { opacity: 1; transform: scale(1.6); }
         }
       `}</style>
     </section>
@@ -161,11 +117,5 @@ export default function Hero() {
 }
 
 function Dot({ active = false }: { active?: boolean }) {
-  return (
-    <span
-      className={`h-3 w-3 rounded-full transition ${
-        active ? "bg-white" : "bg-white/40"
-      }`}
-    />
-  );
+  return <span className={`h-3 w-3 rounded-full transition ${active ? "bg-white" : "bg-white/40"}`} />;
 }

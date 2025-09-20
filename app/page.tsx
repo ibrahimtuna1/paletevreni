@@ -1,4 +1,4 @@
-// app/page.tsx  (SERVER; en tepede "use client" YOK)
+// app/page.tsx  (SERVER component)
 import { Suspense } from "react";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
@@ -8,15 +8,18 @@ import Sections from "./blocks/Sections";
 export default function Page() {
   return (
     <main>
-      {/* Eğer bu alt bileşenler hook kullanıyorsa, kendi dosyalarında "use client" olsun.
-         useSearchParams/usePathname gibi şeyler varsa ayrıca Suspense'e alıyoruz. */}
+      {/* Header client bileşense güvenli olması için Suspense ile sarıyoruz */}
       <Suspense fallback={null}>
         <Header />
       </Suspense>
 
+      {/* Hero client ama Suspense şart değil; istersen sarabilirsin */}
       <Hero />
 
-      <Sections />
+      {/* Sections "use client" olduğu için Suspense ile sarmak iyi pratik */}
+      <Suspense fallback={null}>
+        <Sections />
+      </Suspense>
 
       <Footer />
     </main>

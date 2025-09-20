@@ -1,5 +1,6 @@
-// blocks/Sections.tsx
-import { useState } from "react";
+"use client";
+
+import { useState, type ReactNode } from "react";
 
 export default function Sections() {
   return (
@@ -23,7 +24,7 @@ function Shell({
   title: string;
   subtitle?: string;
   centerTitle?: boolean;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <section id={id} className="relative border-t border-slate-100 bg-white">
@@ -96,7 +97,7 @@ function HowItWorks() {
 /** Tek paket – indirimi belirgin fiyat kartı */
 function Pricing() {
   const oldPrice = 1999; // TL (üstü çizili)
-  const price = 1500;    // TL (büyük)
+  const price = 1500; // TL (büyük)
   return (
     <Shell
       id="programlar"
@@ -105,22 +106,18 @@ function Pricing() {
     >
       <div className="grid gap-6 lg:grid-cols-[1fr]">
         <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-6 shadow-sm md:p-8">
-          {/* Üst kurdele */}
           <span className="pointer-events-none absolute right-[-60px] top-6 rotate-45 rounded-md bg-fuchsia-600 px-16 py-1 text-xs font-bold uppercase tracking-wide text-white shadow-md">
             En Uygun
           </span>
 
           <div className="grid gap-6 md:grid-cols-2">
-            {/* Sol: başlık + fiyat */}
             <div>
               <h3 className="text-3xl font-extrabold text-slate-900 sm:text-4xl">1 Aylık</h3>
               <p className="mt-1 font-semibold text-slate-700">Palet Evreni Premium</p>
 
               <div className="mt-5 flex items-end gap-3">
                 <div className="text-slate-400">
-                  <del className="text-lg sm:text-xl">
-                    ₺{oldPrice.toLocaleString("tr-TR")}
-                  </del>
+                  <del className="text-lg sm:text-xl">₺{oldPrice.toLocaleString("tr-TR")}</del>
                 </div>
                 <div className="text-fuchsia-700">
                   <span className="text-4xl font-extrabold sm:text-5xl">
@@ -158,7 +155,6 @@ function Pricing() {
               </div>
             </div>
 
-            {/* Sağ: özellikler */}
             <ul className="grid content-start gap-3 text-slate-700">
               {[
                 "4 canlı ders (aylık) + kayıt erişimi",
@@ -268,19 +264,17 @@ function AccordionItem({
         className="flex w-full items-center justify-between gap-4 text-left"
         aria-expanded={open}
       >
-        <span className="text-lg md:text-xl font-semibold text-slate-900">
-          {question}
-        </span>
+        <span className="text-lg md:text-xl font-semibold text-slate-900">{question}</span>
         <span
           className={`inline-flex h-8 w-8 flex-none items-center justify-center rounded-full bg-slate-100 text-slate-700 transition-transform ${
             open ? "rotate-45" : ""
           }`}
           aria-hidden="true"
         >
-          <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor">
-            <path d="M9 4h2v12H9z" />
-            <path d="M4 9h12v2H4z" />
-          </svg>
+            <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor">
+              <path d="M9 4h2v12H9z" />
+              <path d="M4 9h12v2H4z" />
+            </svg>
         </span>
       </button>
 
