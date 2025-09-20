@@ -19,7 +19,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Yanlış şifre" }, { status: 401 });
     }
 
-    // DÜMDÜZ: admin_session=1 yaz, redirect et
     const res = NextResponse.redirect(new URL("/admin", req.url));
     res.cookies.set("admin_session", "1", {
       httpOnly: true,
@@ -29,7 +28,9 @@ export async function POST(req: Request) {
       maxAge: 60 * 60 * 12, // 12 saat
     });
     return res;
-  } catch (e) {
+  } catch (err) {
+    // değişkeni kullanarak no-unused-vars uyarısını kesiyoruz ve log tutuyoruz
+    console.error(err);
     return NextResponse.json({ error: "Sunucu hatası" }, { status: 500 });
   }
 }

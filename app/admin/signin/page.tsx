@@ -24,10 +24,16 @@ export default function AdminSignin() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-      const data = await res.json();
+
+      // tip güvenliği: sadece error alanını bekliyoruz
+      const data = (await res.json()) as { error?: string } | unknown;
 
       if (!res.ok) {
-        setMsg(data?.error || "Giriş başarısız.");
+        const errMsg =
+          typeof data === "object" && data && "error" in (data as Record<string, unknown>)
+            ? String((data as { error?: string }).error || "Giriş başarısız.")
+            : "Giriş başarısız.";
+        setMsg(errMsg);
         setMsgType("error");
         return;
       }
@@ -35,7 +41,9 @@ export default function AdminSignin() {
       setMsg("Giriş başarılı! Yönlendiriliyorsunuz...");
       setMsgType("success");
       setTimeout(() => router.push(nextUrl), 1000);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      // err'u kullanıyoruz ki no-unused-vars uyarısı olmasın, ayrıca log almış oluruz
+      console.error(err);
       setMsg("Bir hata oluştu.");
       setMsgType("error");
     } finally {
@@ -80,11 +88,7 @@ export default function AdminSignin() {
         </button>
 
         {msg && (
-          <p
-            className={`mt-4 text-sm ${
-              msgType === "error" ? "text-red-600" : "text-green-600"
-            }`}
-          >
+          <p className={`mt-4 text-sm ${msgType === "error" ? "text-red-600" : "text-green-600"}`}>
             {msg}
           </p>
         )}
