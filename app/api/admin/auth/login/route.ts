@@ -1,4 +1,3 @@
-// app/api/admin/auth/login/route.ts
 import { NextResponse } from "next/server";
 import { supabase } from "../../../../lib/supabase/client";
 
@@ -28,9 +27,8 @@ export async function POST(req: Request) {
       maxAge: 60 * 60 * 12, // 12 saat
     });
     return res;
-  } catch (err) {
-    // değişkeni kullanarak no-unused-vars uyarısını kesiyoruz ve log tutuyoruz
-    console.error(err);
+  } catch {
+    // parametresiz catch => no-unused-vars yok
     return NextResponse.json({ error: "Sunucu hatası" }, { status: 500 });
   }
 }
