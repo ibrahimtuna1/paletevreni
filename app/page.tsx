@@ -1,10 +1,27 @@
-export default function Home() {
+// app/page.tsx  (SERVER component)
+import { Suspense } from "react";
+import Header from "./components/Header";
+import Footer from "./components/Footer";
+import Hero from "./components/Hero";
+import Sections from "./blocks/Sections";
+
+export default function Page() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-[#0f1020] via-[#131a3a] to-[#201040] text-white">
-      <h1 className="text-4xl font-bold mb-4">Palet Evreni</h1>
-      <p className="text-lg text-white/80">
-        Online resim kursuna hoş geldiniz 🎨
-      </p>
+    <main>
+      {/* Header client bileşense güvenli olması için Suspense ile sarıyoruz */}
+      <Suspense fallback={null}>
+        <Header />
+      </Suspense>
+
+      {/* Hero client ama Suspense şart değil; istersen sarabilirsin */}
+      <Hero />
+
+      {/* Sections "use client" olduğu için Suspense ile sarmak iyi pratik */}
+      <Suspense fallback={null}>
+        <Sections />
+      </Suspense>
+
+      <Footer />
     </main>
   );
 }
