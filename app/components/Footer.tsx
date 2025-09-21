@@ -2,143 +2,132 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import type { ReactNode } from "react";
 
 export default function Footer() {
   const year = new Date().getFullYear();
-  const scrollTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
 
   return (
-    <footer className="relative text-white">
-      {/* BG görsel + overlay */}
-      <div className="absolute inset-0 -z-10 overflow-hidden">
-        <Image
-          src="/images/footer-bg.png"
-          alt=""
-          fill
-          sizes="100vw"
-          priority
-          className="object-cover opacity-25"
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/65 via-black/60 to-black/70" />
+    <footer className="relative isolate text-white overflow-x-clip">
+      {/* BG görsel + overlay + bloblar */}
+      <div aria-hidden className="absolute inset-0 -z-10 overflow-hidden">
+        <div className="relative h-full w-full">
+          <Image
+            src="/images/footer-bg.png"
+            alt=""
+            fill
+            sizes="100vw"
+            priority
+            className="object-cover object-center opacity-30"
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/60 to-black/70" />
+
+          {/* soft blob parıltılar */}
+          <div className="absolute -top-24 left-1/2 h-72 w-[70rem] -translate-x-1/2 rounded-full bg-gradient-to-tr from-fuchsia-500/12 via-purple-500/10 to-sky-500/10 blur-3xl" />
+          <div className="absolute -bottom-32 right-[10%] h-64 w-[48rem] rounded-full bg-gradient-to-tr from-pink-500/10 via-orange-400/10 to-emerald-500/10 blur-3xl" />
+        </div>
       </div>
 
-      {/* ==== FULL-BLEED İÇERİK (kenarlarda boşluk yok) ==== */}
-      <div className="relative w-full py-6 lg:py-8">
-        {/* Satır 1: Logo - Nav - Sosyal */}
-        <div className="grid w-full items-center gap-4 md:grid-cols-[auto,1fr,auto]">
-          {/* Logo */}
-          <div className="flex items-center justify-self-start">
-            <Link href="/" className="inline-flex items-center shrink-0" aria-label="Palet Evreni anasayfa">
-              <Image
-                src="/images/logo.png"
-                alt="Palet Evreni"
-                width={200}
-                height={52}
-                priority
-                className="w-56 md:w-64 h-auto"
-              />
-            </Link>
+      {/* ince üst sınır (kaldırıldı) */}
+      {/* <div className="h-px w-full bg-white/10" /> */}
+
+      {/* İçerik */}
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-2 pt-8">
+        {/* 3 sütun */}
+        <div className="grid grid-cols-1 gap-6 text-center sm:grid-cols-3">
+          <div>
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-white/60">Kurumsal</h4>
+            <ul className="mt-2 space-y-1.5 text-[15px] text-white/85">
+              <li><a className="hover:text-white" href="#">Hakkımızda</a></li>
+              <li><a className="hover:text-white" href="#">Paketlerimiz</a></li>
+              <li><a className="hover:text-white" href="#">Eğitim Felsefemiz</a></li>
+              <li><a className="hover:text-white" href="#">Yönetim Ekibimiz</a></li>
+              <li><a className="hover:text-white" href="#">Haberler</a></li>
+            </ul>
           </div>
 
-          {/* Nav */}
-          <nav className="flex justify-center gap-4 text-[13px] font-medium">
-            <a href="#programlar" className="text-white/85 hover:text-white">PAKETLERİMİZ</a>
-            <a href="#nasil" className="text-white/85 hover:text-white">HAKKIMIZDA</a>
-            <a href="#sss" className="text-white/85 hover:text-white">SSS</a>
-            <Link href="/auth" className="text-fuchsia-300 hover:text-white underline underline-offset-4">
-              HEMEN BAŞVUR!
-            </Link>
-          </nav>
+          <div>
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-white/60">Eğitim</h4>
+            <ul className="mt-2 space-y-1.5 text-[15px] text-white/85">
+              <li><a className="hover:text-white" href="#">Kişiye Özgü Öğretim Modeli</a></li>
+              <li><a className="hover:text-white" href="#">Çift Dilli Eğitim</a></li>
+              <li><a className="hover:text-white" href="#">Master 6</a></li>
+            </ul>
+          </div>
 
-          {/* Sosyal */}
-          <div className="flex items-center justify-self-end">
-            <FollowUs compact />
+          <div>
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-white/60">BİZİ TAKİP EDİN</h4>
+            <ul className="mt-2 space-y-1.5 text-[15px] text-white/85">
+              <li className="flex items-center justify-center gap-2"><span>Instagram</span><IconInstagram /></li>
+              <li className="flex items-center justify-center gap-2"><span>X</span><IconX /></li>
+              <li className="flex items-center justify-center gap-2"><span>Facebook</span><IconFacebook /></li>
+              <li className="flex items-center justify-center gap-2"><span>LinkedIn</span><IconLinkedIn /></li>
+              <li className="flex items-center justify-center gap-2"><span>YouTube</span><IconYouTube /></li>
+            </ul>
           </div>
         </div>
 
-        {/* Satır 2 */}
-        <div className="mt-6 w-full border-t border-white/15 pt-6 md:flex md:items-center md:justify-between">
-          <p className="hidden max-w-xl text-xs text-white/80 md:block">
-            Canlı online resim dersi, ödev geri bildirimi ve portfolyo koçluğu. Yaratıcılığını evinden büyüt.
+        {/* ayraç (kaldırıldı) */}
+        {/* <hr className="mt-4 border-white/10" /> */}
+      </div>
+
+      {/* ALT BAR — full width, overflow yok, çizgi yok */}
+      <div className="w-full">
+        <div className="flex items-center justify-between py-1.5 pl-0 pr-[max(env(safe-area-inset-right),0.75rem)]">
+          <Link href="/" aria-label="Palet Evreni" className="block">
+            <Image
+              src="/images/logo.png"
+              alt="Palet Evreni"
+              width={640}
+              height={176}
+              priority
+              className="block h-auto w-[300px] sm:w-[360px] md:w-[420px] lg:w-[480px]"
+            />
+          </Link>
+
+          <p className="text-[13px] sm:text-sm text-white/80">
+            {year} © Tüm hakları saklıdır.
           </p>
-
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <a href="tel:05015303949" className="rounded-lg border border-white/20 bg-black/20 px-3 py-1.5 hover:bg-black/30">
-              📞 0501 530 39 49
-            </a>
-            <a href="mailto:info@paletevreni.com" className="rounded-lg border border-white/20 bg-black/20 px-3 py-1.5 hover:bg-black/30">
-              ✉️ info@paletevreni.com
-            </a>
-            <button
-              onClick={scrollTop}
-              className="rounded-lg border border-white/20 bg-black/20 px-3 py-1.5 text-white/85 hover:bg-black/30"
-              aria-label="Yukarı çık"
-            >
-              ↑ Yukarı
-            </button>
-          </div>
-        </div>
-
-        {/* Alt satır */}
-        <div className="mt-4 flex w-full flex-col items-center justify-between gap-2 border-t border-white/15 pt-4 text-xs text-white/70 md:flex-row">
-          <p>© {year} Palet Evreni. Tüm hakları saklıdır.</p>
-          <div className="flex items-center gap-2">
-            <a className="hover:text-white" href="#">Kullanım Şartları</a>
-            <span>·</span>
-            <a className="hover:text-white" href="#">Gizlilik</a>
-          </div>
         </div>
       </div>
     </footer>
   );
 }
 
-/* --- Sosyal Bar --- */
-function FollowUs({ compact = false }: { compact?: boolean }) {
-  const iconClass = compact ? "h-4 w-4" : "h-5 w-5";
-  const gap = compact ? "gap-2" : "gap-3";
-  const labelClass = compact ? "text-[12px]" : "text-sm";
-
+/* ikonlar */
+function IconInstagram() {
   return (
-    <div className={`flex items-center ${gap}`}>
-      <span className={`${labelClass} text-white/75`}>Bizi Takip Edin</span>
-      <Social href="https://facebook.com" label="Facebook">
-        <svg viewBox="0 0 24 24" className={iconClass} fill="currentColor" aria-hidden="true">
-          <path d="M22 12a10 10 0 1 0-11.6 9.9v-7h-2.1V12h2.1V9.8c0-2.2 1.3-3.6 3.6-3.6 1 0 2 .1 3 .2v2.5h-1.7c-1.3 0-1.6.6-1.6 1.5V12h3.1l-.5 2.9h-2.6v7A10 10 0 0 0 22 12z" />
-        </svg>
-      </Social>
-      <Social href="https://x.com" label="X">
-        <svg viewBox="0 0 24 24" className={iconClass} fill="currentColor" aria-hidden="true">
-          <path d="M3 3h4.8l4.1 5.9L16.7 3H21l-6.7 8.7L21 21h-4.8l-4.4-6.3L7.3 21H3l7-9.2z" />
-        </svg>
-      </Social>
-      <Social href="https://instagram.com" label="Instagram">
-        <svg viewBox="0 0 24 24" className={iconClass} aria-hidden="true">
-          <rect x="3" y="3" width="18" height="18" rx="5" ry="5" fill="none" stroke="currentColor" strokeWidth="2" />
-          <circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" strokeWidth="2" />
-          <circle cx="17.5" cy="6.5" r="1" fill="currentColor" />
-        </svg>
-      </Social>
-      <Social href="https://youtube.com" label="YouTube">
-        <svg viewBox="0 0 24 24" className={iconClass} fill="currentColor" aria-hidden="true">
-          <path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.4 3.5 12 3.5 12 3.5s-7.4 0-9.4.6A3 3 0 0 0 .5 6.2 31.7 31.7 0 0 0 0 12a31.7 31.7 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c2 .6 9.4 .6 9.4 .6s7.4 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.7 31.7 0 0 0 24 12a31.7 31.7 0 0 0-.5-5.8zM9.8 15.5v-7l6 3.5-6 3.5z" />
-        </svg>
-      </Social>
-    </div>
+    <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+      <rect x="3" y="3" width="18" height="18" rx="5" ry="5" fill="none" stroke="currentColor" strokeWidth="2" />
+      <circle cx="12" cy="12" r="3.1" fill="none" stroke="currentColor" strokeWidth="2" />
+      <circle cx="17.5" cy="6.5" r="1" fill="currentColor" />
+    </svg>
   );
 }
-
-function Social({ href, label, children }: { href: string; label: string; children: ReactNode }) {
+function IconX() {
   return (
-    <a
-      href={href}
-      aria-label={label}
-      className="inline-flex items-center justify-center p-1.5 text-white transition-opacity hover:opacity-85"
-      target="_blank"
-      rel="noreferrer"
-    >
-      {children}
-    </a>
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+      <path d="M3 3h4.8l4.1 5.9L16.7 3H21l-6.7 8.7L21 21h-4.8l-4.4-6.3L7.3 21H3l7-9.2z" />
+    </svg>
+  );
+}
+function IconFacebook() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+      <path d="M22 12a10 10 0 1 0-11.6 9.9v-7h-2.1V12h2.1V9.8c0-2.2 1.3-3.6 3.6-3.6 1 0 2 .1 3 .2v2.5h-1.7c-1.3 0-1.6.6-1.6 1.5V12h3.1l-.5 2.9h-2.6v7A10 10 0 0 0 22 12z" />
+    </svg>
+  );
+}
+function IconLinkedIn() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+      <path d="M4.98 3.5C4.98 4.88 3.86 6 2.5 6S0 4.88 0 3.5 1.12 1 2.5 1 4.98 2.12 4.98 3.5zM0 8h5v13H0zM8 8h5v2.3c.7-1.2 2-2.3 4.1-2.3 4 0 4.9 2.6 4.9 6v7h-5v-6.2c0-1.5-0-3.5-2.1-3.5s-2.4 1.6-2.4 3.4V21H8z" />
+    </svg>
+  );
+}
+function IconYouTube() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+      <path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.4 3.5 12 3.5 12 3.5s-7.4 0-9.4.6A3 3 0 0 0 .5 6.2 31.7 31.7 0 0 0 0 12a31.7 31.7 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c2 .6 9.4 .6 9.4 .6s7.4 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.7 31.7 0 0 0 24 12a31.7 31.7 0 0 0-.5-5.8zM9.8 15.5v-7l6 3.5-6 3.5z" />
+    </svg>
   );
 }
