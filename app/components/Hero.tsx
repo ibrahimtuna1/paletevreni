@@ -22,16 +22,6 @@ export default function Hero() {
   // === SLIDES ===
   const slides: Slide[] = [
     {
-      img: "/images/hero-figure2.png",     // <— 2. slayt
-      alt: "Canlı Dersler",
-      titleTop: "Canlı",
-      titleGradient: "Atölye Dersleri",
-      desc: "Her hafta canlı yayınlanan derslerde eğitmenle birebir soru-cevap.",
-      ctaText: "Ders Takvimi",
-      ctaHref: "#takvim",
-      palette: { top: "#12061a", bottom: "#cb6ce6" },
-    },
-    {
       img: "/images/hero-figure.png",
       alt: "Palet Evreni",
       titleTop: "Ücretsiz",
@@ -39,7 +29,17 @@ export default function Hero() {
       desc: "Sınırlı süre için geçerli olan ücretsiz tanıtım dersimizi hemen deneyin.",
       ctaText: "HEMEN BAŞVUR",
       ctaHref: "/basvuru",
-      palette: { top: "#041418", bottom: "#008e9a" },
+      palette: { top: "#041418", bottom: "#cb6ce6" },
+    },
+    {
+      img: "/images/hero-figure2.png",
+      alt: "Canlı Dersler",
+      titleTop: "Canlı",
+      titleGradient: "Atölye Dersleri",
+      desc: "Her hafta canlı yayınlanan derslerde eğitmenle birebir soru-cevap.",
+      ctaText: "Ders Takvimi",
+      ctaHref: "#takvim",
+      palette: { top: "#12061a", bottom: "#008e9a" },
     },
     {
       img: "/images/hero-figure3.png",     // <— 3. slayt
@@ -371,8 +371,16 @@ export default function Hero() {
           </div>
 
           {/* Oklar */}
-          <button aria-label="Önceki" onClick={prev} className="absolute left-3 top-1/2 z-30 hidden -translate-y-1/2 rounded-full bg-white/20 p-3 text-white backdrop-blur transition hover:bg-white/30 md:inline-flex">‹</button>
-          <button aria-label="Sonraki" onClick={next} className="absolute right-3 top-1/2 z-30 hidden -translate-y-1/2 rounded-full bg-white/20 p-3 text-white backdrop-blur transition hover:bg-white/30 md:inline-flex">›</button>
+          <button
+            aria-label="Önceki"
+            onClick={prev}
+            className="absolute left-3 top-1/2 z-30 -translate-y-1/2 inline-flex rounded-full bg-white/20 p-3 text-white backdrop-blur transition hover:bg-white/30 min-h-[44px] min-w-[44px]"
+          >‹</button>
+          <button
+            aria-label="Sonraki"
+            onClick={next}
+            className="absolute right-3 top-1/2 z-30 -translate-y-1/2 inline-flex rounded-full bg-white/20 p-3 text-white backdrop-blur transition hover:bg-white/30 min-h-[44px] min-w-[44px]"
+          >›</button>
         </div>
       </div>
 

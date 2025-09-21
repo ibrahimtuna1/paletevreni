@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import Image from "next/image";
 
 export default function Sections() {
   return (
     <>
-      <HowItWorks />
+      <LessonFlow />
       <Pricing />
       <FAQ />
     </>
@@ -65,32 +66,119 @@ function Shell({
   );
 }
 
-function HowItWorks() {
-  const items = [
-    { t: "Seviye Tespiti", d: "Kısa bir değerlendirme ile başlangıç seviyen belirlenir." },
-    { t: "Canlı Dersler", d: "Haftalık canlı oturumlar ve soru-cevap." },
-    { t: "Ödev & Geri Bildirim", d: "Her ödev için kişisel yorum ve ilerleme notları." },
-    { t: "Portfolyo", d: "Üniversite/yarışma başvuruları için destek." },
+function LessonFlow() {
+  const steps = [
+    {
+      title: "1. Adım – Öğretmenimiz Çiziyor ve Anlatıyor",
+      desc:
+        "Her dersimiz 45 dakika sürer. İlk bölümde öğretmenimiz canlı olarak çizim yapar; adımları tek tek gösterir. Çocuklar eşlik ederken hem teknikleri hem de yöntemi öğrenir. Ardından herkesin çizimine tek tek bakılır ve kısa sohbetle güçlü yönler ile geliştirme noktaları belirtilir.",
+      img: "/images/section1.png",
+      imgAlt: "Öğretmen canlı çizim yaparken ders akışı",
+    },
+    {
+      title: "2. Adım – Bilmecelerle Çizim",
+      desc:
+        "Dersin ikinci kısmında eğlenceli bilmeceler ve ipuçlarıyla ilerleyen bir çizim oyunu oynarız. Çocuklar buldukça şekilleri ekler, hayal gücü ve problem çözme birlikte gelişir; öğrenme oyunlaştırılarak kalıcı hale gelir.",
+      img: "/images/section2.png",
+      imgAlt: "Bilmecelerle çizim etkinliği",
+    },
+    {
+      title: "3. Adım – Oyunlarla Pekiştirme",
+      desc:
+        "Finalde çizimle bağlantılı interaktif mini oyunlarla öğrendiklerimizi pekiştiririz. Çocuklar ürettiklerini paylaşır, akran geri bildirimi alır ve dersten gülümseyerek ayrılır.",
+      img: "/images/section3.png",
+      imgAlt: "Çizimle ilgili oyunlar",
+    },
   ];
+
   return (
     <Shell
-      id="nasil"
-      title="Nasıl çalışır?"
-      subtitle="Kayıt ol, seviyeni belirle, programını seç. Canlı derslere katıl, ödevlerini yükle, öğretmeninden geri bildirim al."
+      id="ders-akisi"
+      title="Bir Derste Neler Olur?"
+      subtitle="Adım adım, canlı ve etkileşimli bir öğrenme deneyimi."
     >
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        {items.map((i) => (
-          <div
-            key={i.t}
-            className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-md"
-          >
-            <div className="mb-3 h-10 w-10 rounded-xl bg-gradient-to-br from-fuchsia-400/70 to-cyan-300/70" />
-            <h3 className="font-semibold text-slate-900">{i.t}</h3>
-            <p className="mt-1 text-sm text-slate-600">{i.d}</p>
-          </div>
-        ))}
+      <div className="space-y-10 md:space-y-16">
+        {steps.map((s, i) => {
+          const isEven = i % 2 === 1; // 0-based — even index means right-left alternation
+          return (
+            <div
+              key={s.title}
+              className="grid items-center gap-8 lg:grid-cols-2"
+            >
+              {/* Görsel */}
+              <div className={isEven ? "lg:order-2" : ""}>
+                <SlideIn from={isEven ? "right" : "left"}>
+                  <div className="relative aspect-[16/10] w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                    {/* Görsel henüz eklenmemişse hata vermesin diye Image yine de render edilir; 404 olsa da sayfa patlamaz */}
+                    <Image
+                      src={s.img}
+                      alt={s.imgAlt}
+                      fill
+                      sizes="(min-width: 1024px) 50vw, 100vw"
+                      className="object-cover"
+                      priority={false}
+                    />
+                  </div>
+                </SlideIn>
+              </div>
+
+              {/* Metin */}
+              <div className={isEven ? "lg:order-1" : ""}>
+                <SlideIn from={isEven ? "left" : "right"}>
+                  <h3 className="text-xl md:text-2xl font-bold text-slate-900">{s.title}</h3>
+                  <p className="mt-3 text-slate-700 leading-relaxed md:text-lg">{s.desc}</p>
+                </SlideIn>
+              </div>
+            </div>
+          );
+        })}
       </div>
+
+      <style jsx>{`
+        @keyframes slideIn {
+          from { opacity: 0; transform: translateX(var(--tw-translate-x)); }
+          to { opacity: 1; transform: translateX(0); }
+        }
+      `}</style>
     </Shell>
+  );
+}
+
+function SlideIn({ children, from = "left" }: { children: React.ReactNode; from?: "left" | "right" }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            setShow(true);
+            io.disconnect(); // bir kez göster ve bırak
+          }
+        });
+      },
+      { threshold: 0.2 }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  const hidden = from === "left" ? "opacity-0 -translate-x-6" : "opacity-0 translate-x-6";
+  const visible = "opacity-100 translate-x-0";
+
+  return (
+    <div
+      ref={ref}
+      className={`transform-gpu transition-all duration-700 ease-out will-change-transform ${show ? visible : hidden}`}
+      style={{
+        // Tailwind ile uyumlu translate class'ları kullanıyoruz; inline style sadece performans için
+      }}
+    >
+      {children}
+    </div>
   );
 }
 
