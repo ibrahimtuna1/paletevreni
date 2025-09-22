@@ -1,10 +1,15 @@
-import { Suspense } from "react";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { SigninClient } from "./signinClient";
 
-export default function Page() {
-  return (
-    <Suspense fallback={<div className="p-6 text-sm text-slate-600">Yükleniyor…</div>}>
-      <SigninClient />
-    </Suspense>
-  );
+export default async function SigninPage() {
+  const cookieStore = await cookies();
+  const role = cookieStore.get("admin_session")?.value;
+
+  // admin zaten login ise signin'e girmesin
+  if (role === "admin") {
+    redirect("/admin"); // bu da /admin/(protected)/dashboard'a gidecek
+  }
+
+  return <SigninClient />;
 }

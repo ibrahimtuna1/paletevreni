@@ -15,35 +15,30 @@ export function SigninClient() {
   const nextUrl = sp.get("next") || "/admin";
 
   async function login() {
-    setLoading(true);
-    setMsg(null);
-    setMsgType(null);
-
     try {
+      setLoading(true);
+      setMsg(null);
+      setMsgType(null);
+
       const res = await fetch("/api/admin/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
 
-      const data: unknown = await res.json();
+      const data = await res.json();
 
       if (!res.ok) {
-        const errMsg =
-          typeof data === "object" &&
-          data !== null &&
-          "error" in data &&
-          typeof (data as { error?: unknown }).error === "string"
-            ? (data as { error: string }).error
-            : "Giriş başarısız.";
-        setMsg(errMsg);
+        setMsg(data?.error || "Giriş başarısız.");
         setMsgType("error");
         return;
       }
 
       setMsg("Giriş başarılı! Yönlendiriliyorsunuz...");
       setMsgType("success");
-      setTimeout(() => router.push(nextUrl), 1000);
+
+      // cookie yazıldı → admin korumalı gruba geç
+      setTimeout(() => router.replace(nextUrl), 400);
     } catch {
       setMsg("Bir hata oluştu.");
       setMsgType("error");
@@ -55,7 +50,7 @@ export function SigninClient() {
   return (
     <div className="min-h-[100vh] flex items-center justify-center bg-black px-4">
       <div className="w-full max-w-sm rounded-2xl border border-gray-200 p-6 shadow-md bg-white">
-        <h1 className="mb-1 text-2xl font-bold text-gray-900">Admin Panel Girişi</h1>
+        <h1 className="mb-1 text-2xl font-bold text-gray-900">Admin/Teacher Girişi</h1>
         <p className="mb-6 text-sm text-gray-600">E-posta ve şifrenle giriş yap.</p>
 
         <div className="mb-4">
@@ -64,7 +59,7 @@ export function SigninClient() {
             type="email"
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 shadow-sm focus:border-black focus:ring focus:ring-black/20"
             value={email}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
+            onChange={(e) => setEmail(e.target.value)}
             placeholder="admin@paletevreni.com"
           />
         </div>
@@ -75,7 +70,8 @@ export function SigninClient() {
             type="password"
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 shadow-sm focus:border-black focus:ring focus:ring-black/20"
             value={password}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
+            onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && !loading && email && password && login()}
             placeholder="••••••••"
           />
         </div>

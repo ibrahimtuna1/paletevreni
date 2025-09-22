@@ -3,6 +3,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase/client";
 
 type Step = "form" | "confirm" | "done";
 
@@ -33,6 +34,7 @@ export default function Page() {
     dateId: "",
   });
   const [errors, setErrors] = useState<Partial<Form>>({});
+  const [globalErr, setGlobalErr] = useState<string | null>(null);
 
   // Sadece 5 adet hafta içi günü üret (bugünden başlayarak)
   const slots = useMemo<Slot[]>(() => {
@@ -76,19 +78,43 @@ export default function Page() {
 
   const onSubmit = (ev: React.FormEvent) => {
     ev.preventDefault();
+    setGlobalErr(null);
     const e = validate(form);
     setErrors(e);
     if (Object.keys(e).length) return;
-    // Kayıt yok; önce onay ekranına geç
     setStep("confirm");
   };
 
+  // ---- Supabase INSERT ----
   const finalize = async () => {
-    // DEMO: hiçbir yere gönderim yapmıyor
     setSubmitting(true);
-    await new Promise((r) => setTimeout(r, 600));
-    setSubmitting(false);
-    setStep("done");
+    setGlobalErr(null);
+
+    try {
+      const { error } = await supabase.from("basvurular").insert([
+        {
+          student_name: form.studentName.trim(),
+          parent_name: form.parentName.trim(),
+          parent_phone: form.parentPhone.trim(),
+          age: Number(form.age),
+          date_id: form.dateId, // 'YYYY-MM-DD'
+        },
+      ]);
+
+      if (error) {
+        console.error("Başvuru kaydedilemedi:", error);
+        setGlobalErr("Bir hata oluştu, lütfen tekrar deneyin.");
+        setSubmitting(false);
+        return;
+      }
+
+      setSubmitting(false);
+      setStep("done");
+    } catch (err) {
+      console.error(err);
+      setGlobalErr("Beklenmeyen bir hata oluştu.");
+      setSubmitting(false);
+    }
   };
 
   const inputBase =
@@ -124,6 +150,12 @@ export default function Page() {
                   sizi arayacağız.
                 </p>
               </header>
+
+              {globalErr && (
+                <div className="mb-4 rounded-xl border border-rose-400/30 bg-rose-500/10 p-3 text-sm text-rose-200">
+                  {globalErr}
+                </div>
+              )}
 
               <form onSubmit={onSubmit} className="space-y-5">
                 {/* Öğrenci adı */}
