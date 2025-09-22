@@ -7,7 +7,7 @@ export default function Sections() {
   return (
     <>
       <LessonFlow />
-      <Pricing />
+      <Pricing /> {/* id="paketler" oldu */}
       <FAQ />
     </>
   );
@@ -28,7 +28,7 @@ function Shell({
   children: ReactNode;
 }) {
   return (
-    <section id={id} className="relative border-t border-slate-100 bg-white">
+    <section id={id} className="relative border-t border-slate-100 bg-white scroll-mt-24">
       <div className="pointer-events-none absolute inset-0 opacity-40 [background:radial-gradient(circle,rgba(2,6,23,0.04)_1px,transparent_1.2px)] [background-size:18px_18px] [animation:floatY_24s_linear_infinite]" />
       <div className="relative mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:py-24">
         <h2
@@ -99,7 +99,7 @@ function LessonFlow() {
     >
       <div className="space-y-10 md:space-y-16">
         {steps.map((s, i) => {
-          const isEven = i % 2 === 1; // 0-based — even index means right-left alternation
+          const isEven = i % 2 === 1;
           return (
             <div
               key={s.title}
@@ -109,14 +109,12 @@ function LessonFlow() {
               <div className={isEven ? "lg:order-2" : ""}>
                 <SlideIn from={isEven ? "right" : "left"}>
                   <div className="relative aspect-[16/10] w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-                    {/* Görsel henüz eklenmemişse hata vermesin diye Image yine de render edilir; 404 olsa da sayfa patlamaz */}
                     <Image
                       src={s.img}
                       alt={s.imgAlt}
                       fill
                       sizes="(min-width: 1024px) 50vw, 100vw"
                       className="object-cover"
-                      priority={false}
                     />
                   </div>
                 </SlideIn>
@@ -133,13 +131,6 @@ function LessonFlow() {
           );
         })}
       </div>
-
-      <style jsx>{`
-        @keyframes slideIn {
-          from { opacity: 0; transform: translateX(var(--tw-translate-x)); }
-          to { opacity: 1; transform: translateX(0); }
-        }
-      `}</style>
     </Shell>
   );
 }
@@ -156,7 +147,7 @@ function SlideIn({ children, from = "left" }: { children: React.ReactNode; from?
         entries.forEach((e) => {
           if (e.isIntersecting) {
             setShow(true);
-            io.disconnect(); // bir kez göster ve bırak
+            io.disconnect();
           }
         });
       },
@@ -173,24 +164,22 @@ function SlideIn({ children, from = "left" }: { children: React.ReactNode; from?
     <div
       ref={ref}
       className={`transform-gpu transition-all duration-700 ease-out will-change-transform ${show ? visible : hidden}`}
-      style={{
-        // Tailwind ile uyumlu translate class'ları kullanıyoruz; inline style sadece performans için
-      }}
     >
       {children}
     </div>
   );
 }
 
-/** Tek paket – indirimi belirgin fiyat kartı */
+/** Paketler – fiyat kartı */
 function Pricing() {
-  const oldPrice = 1999; // TL (üstü çizili)
-  const price = 1500; // TL (büyük)
+  const oldPrice = 1999;
+  const price = 1500;
   return (
     <Shell
-      id="programlar"
-      title="Program ve Ücret"
+      id="paketler" // HERO CTA buraya scroll eder
+      title="Paketlerimiz"
       subtitle="Tanıtım dersimiz ücretsizdir. Asıl program tek pakettir ve her ay 4 canlı ders içerir."
+      centerTitle
     >
       <div className="grid gap-6 lg:grid-cols-[1fr]">
         <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-6 shadow-sm md:p-8">
@@ -281,7 +270,7 @@ function CheckIcon() {
   );
 }
 
-/** FAQ – animasyonlu, daha büyük ve kalın tipografi, başlık ortada */
+/** FAQ */
 function FAQ() {
   const faqs = [
     {
@@ -313,22 +302,6 @@ function FAQ() {
           <AccordionItem key={f.q} question={f.q} answer={f.a} defaultOpen={i === 0} />
         ))}
       </div>
-
-      <style jsx>{`
-        @keyframes fadeUp {
-          0% {
-            opacity: 0;
-            transform: translateY(6px);
-          }
-          100% {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        .accordion-enter {
-          animation: fadeUp 420ms ease forwards;
-        }
-      `}</style>
     </Shell>
   );
 }
@@ -345,7 +318,7 @@ function AccordionItem({
   const [open, setOpen] = useState(defaultOpen);
 
   return (
-    <div className="accordion-enter group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md">
+    <div className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -357,12 +330,11 @@ function AccordionItem({
           className={`inline-flex h-8 w-8 flex-none items-center justify-center rounded-full bg-slate-100 text-slate-700 transition-transform ${
             open ? "rotate-45" : ""
           }`}
-          aria-hidden="true"
         >
-            <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor">
-              <path d="M9 4h2v12H9z" />
-              <path d="M4 9h12v2H4z" />
-            </svg>
+          <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor">
+            <path d="M9 4h2v12H9z" />
+            <path d="M4 9h12v2H4z" />
+          </svg>
         </span>
       </button>
 

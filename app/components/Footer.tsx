@@ -1,3 +1,4 @@
+// app/components/Footer.tsx
 "use client";
 
 import Link from "next/link";
@@ -20,15 +21,11 @@ export default function Footer() {
             className="object-cover object-center opacity-30"
           />
           <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/60 to-black/70" />
-
           {/* soft blob parıltılar */}
           <div className="absolute -top-24 left-1/2 h-72 w-[70rem] -translate-x-1/2 rounded-full bg-gradient-to-tr from-fuchsia-500/12 via-purple-500/10 to-sky-500/10 blur-3xl" />
           <div className="absolute -bottom-32 right-[10%] h-64 w-[48rem] rounded-full bg-gradient-to-tr from-pink-500/10 via-orange-400/10 to-emerald-500/10 blur-3xl" />
         </div>
       </div>
-
-      {/* ince üst sınır (kaldırıldı) */}
-      {/* <div className="h-px w-full bg-white/10" /> */}
 
       {/* İçerik */}
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-2 pt-8">
@@ -57,20 +54,57 @@ export default function Footer() {
           <div>
             <h4 className="text-xs font-semibold uppercase tracking-wider text-white/60">BİZİ TAKİP EDİN</h4>
             <ul className="mt-2 space-y-1.5 text-[15px] text-white/85">
-              <li className="flex items-center justify-center gap-2"><span>Instagram</span><IconInstagram /></li>
-              <li className="flex items-center justify-center gap-2"><span>X</span><IconX /></li>
-              <li className="flex items-center justify-center gap-2"><span>Facebook</span><IconFacebook /></li>
+              {/* Instagram */}
+              <li>
+                <a
+                  href="https://www.instagram.com/palet.evreni/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Instagram - palet.evreni"
+                  className="flex items-center justify-center gap-2 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 rounded-sm"
+                >
+                  <span>Instagram</span>
+                  <IconInstagram />
+                </a>
+              </li>
+
+              {/* Facebook */}
+              <li>
+                <a
+                  href="https://www.facebook.com/people/Palet-Evreni/61581130957062/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Facebook - Palet Evreni"
+                  className="flex items-center justify-center gap-2 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 rounded-sm"
+                >
+                  <span>Facebook</span>
+                  <IconFacebook />
+                </a>
+              </li>
+
+              {/* TikTok (yeni) */}
+              <li>
+                <a
+                  href="https://www.tiktok.com/@paletevreni"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="TikTok - paletevreni"
+                  className="flex items-center justify-center gap-2 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 rounded-sm"
+                >
+                  <span>TikTok</span>
+                  <IconTikTok />
+                </a>
+              </li>
+
+              {/* Diğerleri (linkler hazır olunca ekleriz) */}
               <li className="flex items-center justify-center gap-2"><span>LinkedIn</span><IconLinkedIn /></li>
               <li className="flex items-center justify-center gap-2"><span>YouTube</span><IconYouTube /></li>
             </ul>
           </div>
         </div>
-
-        {/* ayraç (kaldırıldı) */}
-        {/* <hr className="mt-4 border-white/10" /> */}
       </div>
 
-      {/* ALT BAR — full width, overflow yok, çizgi yok */}
+      {/* ALT BAR */}
       <div className="w-full">
         <div className="flex items-center justify-between py-1.5 pl-0 pr-[max(env(safe-area-inset-right),0.75rem)]">
           <Link href="/" aria-label="Palet Evreni" className="block">
@@ -103,13 +137,7 @@ function IconInstagram() {
     </svg>
   );
 }
-function IconX() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
-      <path d="M3 3h4.8l4.1 5.9L16.7 3H21l-6.7 8.7L21 21h-4.8l-4.4-6.3L7.3 21H3l7-9.2z" />
-    </svg>
-  );
-}
+
 function IconFacebook() {
   return (
     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
@@ -117,6 +145,7 @@ function IconFacebook() {
     </svg>
   );
 }
+
 function IconLinkedIn() {
   return (
     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
@@ -124,10 +153,20 @@ function IconLinkedIn() {
     </svg>
   );
 }
+
 function IconYouTube() {
   return (
     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
       <path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.4 3.5 12 3.5 12 3.5s-7.4 0-9.4.6A3 3 0 0 0 .5 6.2 31.7 31.7 0 0 0 0 12a31.7 31.7 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c2 .6 9.4 .6 9.4 .6s7.4 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.7 31.7 0 0 0 24 12a31.7 31.7 0 0 0-.5-5.8zM9.8 15.5v-7l6 3.5-6 3.5z" />
+    </svg>
+  );
+}
+
+function IconTikTok() {
+  // Basitleştirilmiş TikTok tarzı nota simgesi
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+      <path d="M14.5 2v7.2a5.5 5.5 0 1 1-2.5-1V4.5h2.5c.4 1.7 1.7 3.3 3.3 4.2A7.9 7.9 0 0 0 21 9.3v2.6a9.6 9.6 0 0 1-6.5-2.4V16a5 5 0 1 1-5-5c.5 0 1 .1 1.5.2V2h3.5z" />
     </svg>
   );
 }

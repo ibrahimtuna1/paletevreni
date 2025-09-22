@@ -26,7 +26,8 @@ export default function Hero() {
       alt: "Palet Evreni",
       titleTop: "Ücretsiz",
       titleGradient: "Tanıtım Dersi",
-      desc: "Sınırlı süre için geçerli olan ücretsiz tanıtım dersimizi hemen deneyin.",
+      desc:
+        "Palet Evreni’nde çocuklarınız hem eğlenecek hem de sanatla kendini ifade etmenin keyfini keşfedecek. Ücretsiz tanıtım dersimizde eğitmenlerimizi tanıyabilir, derslerin nasıl işlendiğini deneyimleyebilirsiniz.",
       ctaText: "HEMEN BAŞVUR",
       ctaHref: "/basvuru",
       palette: { top: "#041418", bottom: "#cb6ce6" },
@@ -37,29 +38,19 @@ export default function Hero() {
       titleTop: "Canlı",
       titleGradient: "Atölye Dersleri",
       desc: "Her hafta canlı yayınlanan derslerde eğitmenle birebir soru-cevap.",
-      ctaText: "Ders Takvimi",
-      ctaHref: "#takvim",
+      ctaText: "Detaylı Bilgi Al",   // ✅ güncellendi
+      ctaHref: "/atolye",            // ✅ yeni sayfaya gider
       palette: { top: "#12061a", bottom: "#008e9a" },
     },
     {
-      img: "/images/hero-figure3.png",     // <— 3. slayt
-      alt: "Portfolyo",
-      titleTop: "Portfolyo",
-      titleGradient: "Koçluğu",
-      desc: "Çalışmalarını profesyonel koçlarla geliştir; hedef okula hazır ol.",
-      ctaText: "Koçluğu İncele",
-      ctaHref: "#kocluk",
+      img: "/images/hero-figure3.png",
+      alt: "Paketlerimiz",
+      titleTop: "Esnek",
+      titleGradient: "Paketlerimiz",
+      desc: "Çocuğunuzun ihtiyacına uygun esnek paket seçenekleri.",
+      ctaText: "Paketlerimizi Gör",
+      ctaHref: "#paketler",
       palette: { top: "#1a0f00", bottom: "#cc5a00" },
-    },
-    {
-      img: "/images/hero-figure4.png",     // <— 4. slayt
-      alt: "Topluluk",
-      titleTop: "Yaratıcı",
-      titleGradient: "Topluluk",
-      desc: "Discord’da etkinlikler, geri bildirim seansları ve proje eşlikçileri.",
-      ctaText: "Topluluğa Katıl",
-      ctaHref: "#topluluk",
-      palette: { top: "#0d1a00", bottom: "#00cc5c" },
     },
   ];
 
@@ -277,7 +268,10 @@ export default function Hero() {
       {/* Arka plan */}
       <div
         className="fixed inset-0 -z-30"
-        style={{ background: `linear-gradient(180deg, ${currentPalette.top} 0%, ${currentPalette.bottom} 100%)`, transition: "background 500ms ease" }}
+        style={{
+          background: `linear-gradient(180deg, ${currentPalette.top} 0%, ${currentPalette.bottom} 100%)`,
+          transition: "background 500ms ease",
+        }}
       />
       <div className="pointer-events-none fixed inset-0 -z-20 bg-[radial-gradient(circle_at_center,transparent_0,transparent_55%,rgba(0,0,0,0.35)_100%)]" />
       <canvas ref={canvasRef} className="absolute inset-0 z-10" style={{ cursor: "none" }} />
@@ -302,10 +296,12 @@ export default function Hero() {
             <Image src="/images/logo.png" alt="Palet Evreni" width={300} height={120} priority sizes="(min-width:1024px) 300px, (min-width:768px) 240px, 180px" className="h-12 w-auto md:h-[84px] origin-left scale-110 md:scale-[1.25] drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]" draggable={false} />
           </Link>
 
+          {/* NAV */}
           <nav className="ml-auto hidden md:flex items-center gap-3 text-sm">
             <a href="#paketler" className="btn-gpill from-emerald-500 via-emerald-600 to-emerald-500">Paketlerimiz</a>
             <a href="#tanitim-videolari" className="btn-gpill from-cyan-500 via-blue-500 to-cyan-500">Tanıtım Videoları</a>
-            <a href="#hakkinda" className="btn-gpill from-pink-500 via-violet-500 to-pink-500">Hakkımızda</a>
+            {/* /hakkimizda slug'ı: ASCII */}
+            <a href="/hakkimizda" className="btn-gpill from-pink-500 via-violet-500 to-pink-500">Hakkımızda</a>
             <a href="#iletisim" className="btn-gpill from-amber-500 via-rose-500 to-amber-500">İletişim</a>
           </nav>
         </div>
@@ -339,18 +335,34 @@ export default function Hero() {
 
                   {s.ctaText && s.ctaHref && (
                     <div className="mt-7 relative" ref={i === idx ? burstHostRef : undefined}>
-                      <a
-                        href={s.ctaHref}
-                        onMouseEnter={i === idx ? starBurst : undefined}
-                        onFocus={i === idx ? starBurst : undefined}
-                        className="relative inline-flex items-center justify-center rounded-full px-9 py-4 text-lg font-semibold text-white shadow-xl transition hover:-translate-y-0.5 focus:outline-none"
-                        style={{ background: "linear-gradient(90deg, #ff4fb8, #ff7bd1, #ffa4e0)", boxShadow: "0 20px 40px rgba(255, 100, 180, 0.25)" }}
-                      >
-                        <span className="absolute inset-0 overflow-hidden rounded-full pointer-events-none">
-                          <span className="shine absolute -inset-1 translate-x-[-120%] blur-[6px]" />
-                        </span>
-                        <span className="relative z-10">{s.ctaText}</span>
-                      </a>
+                      {/* İç linkse Link, değilse <a> */}
+                      {s.ctaHref.startsWith("/") ? (
+                        <Link
+                          href={s.ctaHref}
+                          onMouseEnter={i === idx ? starBurst : undefined}
+                          onFocus={i === idx ? starBurst : undefined}
+                          className="relative inline-flex items-center justify-center rounded-full px-9 py-4 text-lg font-semibold text-white shadow-xl transition hover:-translate-y-0.5 focus:outline-none"
+                          style={{ background: "linear-gradient(90deg, #ff4fb8, #ff7bd1, #ffa4e0)", boxShadow: "0 20px 40px rgba(255, 100, 180, 0.25)" }}
+                        >
+                          <span className="absolute inset-0 overflow-hidden rounded-full pointer-events-none">
+                            <span className="shine absolute -inset-1 translate-x-[-120%] blur-[6px]" />
+                          </span>
+                          <span className="relative z-10">{s.ctaText}</span>
+                        </Link>
+                      ) : (
+                        <a
+                          href={s.ctaHref}
+                          onMouseEnter={i === idx ? starBurst : undefined}
+                          onFocus={i === idx ? starBurst : undefined}
+                          className="relative inline-flex items-center justify-center rounded-full px-9 py-4 text-lg font-semibold text-white shadow-xl transition hover:-translate-y-0.5 focus:outline-none"
+                          style={{ background: "linear-gradient(90deg, #ff4fb8, #ff7bd1, #ffa4e0)", boxShadow: "0 20px 40px rgba(255, 100, 180, 0.25)" }}
+                        >
+                          <span className="absolute inset-0 overflow-hidden rounded-full pointer-events-none">
+                            <span className="shine absolute -inset-1 translate-x-[-120%] blur-[6px]" />
+                          </span>
+                          <span className="relative z-10">{s.ctaText}</span>
+                        </a>
+                      )}
                     </div>
                   )}
                 </div>
@@ -371,16 +383,8 @@ export default function Hero() {
           </div>
 
           {/* Oklar */}
-          <button
-            aria-label="Önceki"
-            onClick={prev}
-            className="absolute left-3 top-1/2 z-30 -translate-y-1/2 inline-flex rounded-full bg-white/20 p-3 text-white backdrop-blur transition hover:bg-white/30 min-h-[44px] min-w-[44px]"
-          >‹</button>
-          <button
-            aria-label="Sonraki"
-            onClick={next}
-            className="absolute right-3 top-1/2 z-30 -translate-y-1/2 inline-flex rounded-full bg-white/20 p-3 text-white backdrop-blur transition hover:bg-white/30 min-h-[44px] min-w-[44px]"
-          >›</button>
+          <button aria-label="Önceki" onClick={prev} className="absolute left-3 top-1/2 z-30 -translate-y-1/2 inline-flex rounded-full bg-white/20 p-3 text-white backdrop-blur transition hover:bg-white/30 min-h-[44px] min-w-[44px]">‹</button>
+          <button aria-label="Sonraki" onClick={next} className="absolute right-3 top-1/2 z-30 -translate-y-1/2 inline-flex rounded-full bg-white/20 p-3 text-white backdrop-blur transition hover:bg-white/30 min-h-[44px] min-w-[44px]">›</button>
         </div>
       </div>
 
