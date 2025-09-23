@@ -18,24 +18,31 @@ export async function POST(req: Request) {
   try {
     const { email, password } = await req.json();
 
-    // 1) şifre doğrulama
+    // 1) Şifre doğrulama
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error || !data.user) {
+      console.error("🔴 Supabase login error:", error?.message, error); // LOG
       return NextResponse.json({ error: "E-posta ya da şifre hatalı." }, { status: 401 });
     }
 
-    // 2) rolü oku (server key ile güvenli)
+    // 2) Rol kontrolü
     const { data: profile, error: pErr } = await supabaseAdmin
       .from("users")
       .select("role")
       .eq("id", data.user.id)
       .single();
 
-    if (pErr || !profile?.role) {
+    if (pErr) {
+      console.error("🔴 Supabase profile error:", pErr.message, pErr); // LOG
+      return NextResponse.json({ error: "Rol okunamadı." }, { status: 500 });
+    }
+
+    if (!profile?.role) {
+      console.warn("⚠️ Kullanıcıda rol yok:", data.user.id, email); // LOG
       return NextResponse.json({ error: "Bu hesaba rol atanmadı." }, { status: 403 });
     }
 
-    // 3) cookie yaz
+    // 3) Cookie yaz
     const res = NextResponse.json({ ok: true, role: profile.role });
     res.cookies.set("admin_session", profile.role, {
       httpOnly: true,
@@ -44,8 +51,10 @@ export async function POST(req: Request) {
       path: "/",
       maxAge: 60 * 30, // 30 dk
     });
+    console.log("✅ Login başarılı:", email, "rol:", profile.role); // LOG
     return res;
-  } catch (e) {
+  } catch (e: any) {
+    console.error("🔥 Sunucu hatası:", e.message || e);
     return NextResponse.json({ error: "Sunucu hatası" }, { status: 500 });
   }
 }
