@@ -40,4 +40,4 @@ html, body {
   h3 { @apply font-semibold; }
   /* küçük metinler daha okunur dursun */
   small, .text-xs { @apply font-normal; }
-}
+}html { scroll-behavior: smooth; }

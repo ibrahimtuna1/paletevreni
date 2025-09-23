@@ -299,7 +299,7 @@ export default function Hero() {
           {/* NAV */}
           <nav className="ml-auto hidden md:flex items-center gap-3 text-sm">
             <a href="#paketler" className="btn-gpill from-emerald-500 via-emerald-600 to-emerald-500">Paketlerimiz</a>
-            <a href="#tanitim-videolari" className="btn-gpill from-cyan-500 via-blue-500 to-cyan-500">Tanıtım Videoları</a>
+            <a href="tanitim-videolari" className="btn-gpill from-cyan-500 via-blue-500 to-cyan-500">Tanıtım Videoları</a>
             {/* /hakkimizda slug'ı: ASCII */}
             <a href="/hakkimizda" className="btn-gpill from-pink-500 via-violet-500 to-pink-500">Hakkımızda</a>
             <a href="#iletisim" className="btn-gpill from-amber-500 via-rose-500 to-amber-500">İletişim</a>

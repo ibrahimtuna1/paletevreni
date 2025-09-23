@@ -40,7 +40,6 @@ export default function Sidebar() {
         <SidebarLink href="/admin/trials" icon={BarChart3} label="Tanıtım dersi öğrencileri" />
         <SidebarLink href="/admin/students" icon={FileText} label="Öğrencilerim" />
         <SidebarLink href="/admin/applications" icon={FileText} label="Başvurular" />
-        <SidebarLink href="/admin/courses" icon={Palette} label="Kurslar" />
         <SidebarLink href="/admin/payments" icon={CreditCard} label="Ödemeler" />
         <SidebarLink href="/admin/settings" icon={Settings} label="Ayarlar" />
       </nav>
