@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import Sidebar from "./Sidebar";
+import MotionRoot from "./MotionRoot"; // ← client wrapper
 
 export default async function ProtectedLayout({
   children,
@@ -15,9 +16,12 @@ export default async function ProtectedLayout({
   }
 
   return (
-    <div className="flex min-h-dvh bg-gray-50">
+    <div className="flex min-h-dvh bg-gray-50 text-gray-900">
       <Sidebar />
-      <main className="flex-1 p-6">{children}</main>
+      <main className="flex-1 p-6">
+        {/* Framer Motion context'i burada, tüm alt sayfalara yayılıyor */}
+        <MotionRoot>{children}</MotionRoot>
+      </main>
     </div>
   );
 }
