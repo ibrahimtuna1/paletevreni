@@ -1,3 +1,4 @@
+// app/components/TanitimCarousel.tsx
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -11,26 +12,39 @@ type Vid = {
 
 export default function TanitimCarousel({ videos }: { videos: Vid[] }) {
   const [idx, setIdx] = useState(0);
+
+  // refs
   const trackRef = useRef<HTMLDivElement>(null);
-  const cardRefs = useRef<HTMLDivElement[]>([]);
-  const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
+  const cardRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const videoRefs = useRef<Array<HTMLVideoElement | null>>([]);
   const generatedRef = useRef<Set<string>>(new Set()); // aynı src için bir kez üret
 
-  // Aktif karta kaydır
+  /* ---------- helpers ---------- */
+  const setCardRef = (i: number) => (el: HTMLDivElement | null) => {
+    cardRefs.current[i] = el;
+  };
+  const setVideoRef = (i: number) => (el: HTMLVideoElement | null) => {
+    videoRefs.current[i] = el;
+  };
+
   const go = (i: number) => {
     const t = trackRef.current;
     const c = cardRefs.current[i];
     if (!t || !c) return;
-    t.scrollTo({ left: c.offsetLeft - t.clientWidth / 2 + c.clientWidth / 2, behavior: "smooth" });
+    t.scrollTo({
+      left: c.offsetLeft - t.clientWidth / 2 + c.clientWidth / 2,
+      behavior: "smooth",
+    });
   };
   const next = () => go(Math.min(idx + 1, videos.length - 1));
   const prev = () => go(Math.max(idx - 1, 0));
 
-  // Scroll ile aktif kartı takip et
+  /* ---------- aktif kartı scroll ile takip et ---------- */
   useEffect(() => {
     const t = trackRef.current;
     if (!t) return;
-    const items = cardRefs.current.filter(Boolean);
+    const items = cardRefs.current.filter(Boolean) as HTMLDivElement[];
+
     const io = new IntersectionObserver(
       (entries) => {
         const best = entries
@@ -42,18 +56,19 @@ export default function TanitimCarousel({ videos }: { videos: Vid[] }) {
       },
       { root: t, threshold: [0.3, 0.6, 0.8] }
     );
+
     items.forEach((el) => io.observe(el));
     return () => io.disconnect();
   }, []);
 
-  // Aktif olmayan videoları durdur
+  /* ---------- aktif olmayan videoları durdur ---------- */
   useEffect(() => {
     videoRefs.current.forEach((v, i) => {
       if (v && i !== idx && !v.paused) v.pause();
     });
   }, [idx]);
 
-  // Klavye okları
+  /* ---------- klavye okları ---------- */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "ArrowRight") next();
@@ -61,9 +76,10 @@ export default function TanitimCarousel({ videos }: { videos: Vid[] }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx]);
 
-  // ❇️ POSTER OTO-ÜRETİM: poster yoksa ilk kareden JPEG üret
+  /* ---------- poster oto-üretim (poster yoksa ilk kareden) ---------- */
   useEffect(() => {
     const makePoster = (v: HTMLVideoElement) => {
       const key = v.currentSrc || v.src;
@@ -71,19 +87,33 @@ export default function TanitimCarousel({ videos }: { videos: Vid[] }) {
 
       const grab = () => {
         try {
-          // 9:16 “cover” kırpma ile küçük bir poster: 540x960
-          const W = 540, H = 960, targetAR = W / H;
-          const vw = v.videoWidth, vh = v.videoHeight, videoAR = vw / vh;
+          const W = 540,
+            H = 960,
+            targetAR = W / H;
+          const vw = v.videoWidth,
+            vh = v.videoHeight,
+            videoAR = vw / vh;
 
           const canvas = document.createElement("canvas");
-          canvas.width = W; canvas.height = H;
-          const ctx = canvas.getContext("2d")!;
+          canvas.width = W;
+          canvas.height = H;
+          const ctx = canvas.getContext("2d");
+          if (!ctx || !vw || !vh) return;
 
-          let sx = 0, sy = 0, sw = vw, sh = vh;
+          let sx = 0,
+            sy = 0,
+            sw = vw,
+            sh = vh;
           if (videoAR > targetAR) {
-            sh = vh; sw = sh * targetAR; sx = (vw - sw) / 2; sy = 0;
+            sh = vh;
+            sw = sh * targetAR;
+            sx = (vw - sw) / 2;
+            sy = 0;
           } else {
-            sw = vw; sh = sw / targetAR; sx = 0; sy = (vh - sh) / 2;
+            sw = vw;
+            sh = sw / targetAR;
+            sx = 0;
+            sy = (vh - sh) / 2;
           }
 
           ctx.drawImage(v, sx, sy, sw, sh, 0, 0, W, H);
@@ -107,11 +137,11 @@ export default function TanitimCarousel({ videos }: { videos: Vid[] }) {
       };
 
       if (v.readyState >= 2) {
-        // ❌ HATA BURADAYDI: makePoster(v) çağrılıyordu → sonsuz döngü
-        // ✅ Doğru: artık hazır, direkt çek
+        // metadata hazır → direkt ilk kareyi al
         doSeekAndGrab();
       } else {
-        v.addEventListener("loadeddata", () => makePoster(v), { once: true });
+        const onLoaded = () => makePoster(v);
+        v.addEventListener("loadeddata", onLoaded, { once: true });
         v.preload = "auto";
         v.load();
       }
@@ -135,7 +165,7 @@ export default function TanitimCarousel({ videos }: { videos: Vid[] }) {
         {videos.map((v, i) => (
           <div
             key={i}
-            ref={(el) => { if (el) cardRefs.current[i] = el; }}
+            ref={setCardRef(i)}
             className={[
               "group relative snap-center shrink-0",
               "h-[78vh] max-h-[880px] aspect-[9/16]",
@@ -148,7 +178,9 @@ export default function TanitimCarousel({ videos }: { videos: Vid[] }) {
             <div
               className={[
                 "pointer-events-none absolute -inset-1 rounded-[32px] blur-2xl transition-opacity duration-500",
-                i === idx ? "opacity-60 bg-[radial-gradient(40%_60%_at_50%_50%,rgba(255,255,255,0.25),transparent)]" : "opacity-0",
+                i === idx
+                  ? "opacity-60 bg-[radial-gradient(40%_60%_at_50%_50%,rgba(255,255,255,0.25),transparent)]"
+                  : "opacity-0",
               ].join(" ")}
             />
 
@@ -166,9 +198,9 @@ export default function TanitimCarousel({ videos }: { videos: Vid[] }) {
                 />
               ) : (
                 <video
-                  ref={(el) => (videoRefs.current[i] = el)}
+                  ref={setVideoRef(i)} // ✅ void döndüren callback
                   className="absolute inset-0 h-full w-full object-cover"
-                  poster={v.poster}                 // varsa kullan, yoksa effect üretir
+                  poster={v.poster}
                   preload={v.poster ? "metadata" : "auto"}
                   controls
                   playsInline
