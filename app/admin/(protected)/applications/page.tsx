@@ -3,34 +3,45 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAdminApi } from "@/lib/hooks/useAdminApi";
 
+/* ----------------- Tipler ----------------- */
 type Item = {
   id: string;
   student_name: string;
   parent_name: string;
   parent_phone: string;
   age: number;
-  date_id: string;
+  date_id?: string | null; // DB'de boş olabilir
   status: "pending" | "approved" | "rejected";
   created_at: string;
 };
 
 type Filter = "all" | "pending" | "approved" | "rejected";
 
+/* ----------------- Sayfa ----------------- */
 export default function ApplicationsPage() {
-  // ARTIK path veriyoruz:
+  // Başvurular API
   const api = useAdminApi("/api/admin/applications");
+  // Tanıtım dersi (approve) API
+  const approveApi = useAdminApi("/api/admin/trials/approve");
 
   const [items, setItems] = useState<Item[]>([]);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [busyId, setBusyId] = useState<string | null>(null);
 
+  // Onay modal state
+  const [approveOpen, setApproveOpen] = useState(false);
+  const [approveId, setApproveId] = useState<string | null>(null);
+  const [approveWhen, setApproveWhen] = useState<string>(""); // datetime-local
+
   async function load() {
     const res = await api.get();
     if (res?.items) setItems(res.items as Item[]);
   }
-
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -43,18 +54,21 @@ export default function ApplicationsPage() {
       );
   }, [items, search, filter]);
 
-  const stats = useMemo(() => ({
-    total: items.length,
-    pending: items.filter((i) => i.status === "pending").length,
-    approved: items.filter((i) => i.status === "approved").length,
-    rejected: items.filter((i) => i.status === "rejected").length,
-  }), [items]);
+  const stats = useMemo(
+    () => ({
+      total: items.length,
+      pending: items.filter((i) => i.status === "pending").length,
+      approved: items.filter((i) => i.status === "approved").length,
+      rejected: items.filter((i) => i.status === "rejected").length,
+    }),
+    [items]
+  );
 
   async function setStatus(id: string, status: Item["status"]) {
     setBusyId(id);
     // optimistic
     setItems((xs) => xs.map((x) => (x.id === id ? { ...x, status } : x)));
-    const res = await api.patch("update", { id, status }); // <-- /api/admin/applications/update
+    const res = await api.patch("update", { id, status });
     setBusyId(null);
     if (!res) load(); // rollback
   }
@@ -64,13 +78,48 @@ export default function ApplicationsPage() {
     setBusyId(id);
     const before = items;
     setItems((xs) => xs.filter((x) => x.id !== id));
-    const res = await api.del("delete", { id }); // <-- /api/admin/applications/delete?id=...
+    const res = await api.del("delete", { id });
     setBusyId(null);
     if (!res) setItems(before);
   }
 
+  function openApproveModal(i: Item) {
+    setApproveId(i.id);
+    // default: bugünün 20:00'ı (yerel)
+    const d = new Date();
+    d.setHours(20, 0, 0, 0);
+    setApproveWhen(toLocalDatetimeInputValue(d));
+    setApproveOpen(true);
+  }
+
+  async function confirmApprove() {
+    if (!approveId || !approveWhen) return;
+    setBusyId(approveId);
+
+    // datetime-local -> ISO (kullanıcı TZ’si ile)
+    const iso = new Date(approveWhen).toISOString();
+
+    const res = await approveApi.post({
+       applicationId: approveId as string,
+       scheduledAt: iso,
+     });
+    setBusyId(null);
+    setApproveOpen(false);
+    setApproveId(null);
+
+    if (!res?.ok) {
+      alert(res?.error || "Onay sırasında hata oluştu.");
+      await load();
+      return;
+    }
+
+    // UI: başvuruyu "approved" işaretle
+    setItems((xs) => xs.map((x) => (x.id === (approveId as string) ? { ...x, status: "approved" } : x)));
+  }
+
   return (
     <div className="space-y-7">
+      {/* header */}
       <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Başvurular</h1>
@@ -84,6 +133,7 @@ export default function ApplicationsPage() {
         </button>
       </div>
 
+      {/* istatistik */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard title="Toplam" value={stats.total} gradient="from-indigo-500 to-indigo-700" />
         <StatCard title="Bekleyen" value={stats.pending} gradient="from-amber-500 to-amber-700" />
@@ -91,6 +141,7 @@ export default function ApplicationsPage() {
         <StatCard title="Reddedilen" value={stats.rejected} gradient="from-rose-500 to-rose-700" />
       </div>
 
+      {/* arama & filtre */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <input
           value={search}
@@ -106,12 +157,7 @@ export default function ApplicationsPage() {
         </div>
       </div>
 
-      {api.error && (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-rose-700">
-          {api.error}
-        </div>
-      )}
-
+      {/* tablo */}
       <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
         <table className="min-w-full text-sm">
           <thead className="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-600">
@@ -121,7 +167,7 @@ export default function ApplicationsPage() {
               <th className="px-4 py-3">Veli</th>
               <th className="px-4 py-3">Telefon</th>
               <th className="px-4 py-3">Yaş</th>
-              <th className="px-4 py-3">Gün</th>
+              <th className="px-4 py-3">Gün (opsiyonel)</th>
               <th className="px-4 py-3">Durum</th>
               <th className="px-4 py-3"></th>
             </tr>
@@ -148,13 +194,15 @@ export default function ApplicationsPage() {
                   <td className="px-4 py-3 text-gray-800">{i.parent_name}</td>
                   <td className="px-4 py-3 text-gray-800">{formatPhone(i.parent_phone)}</td>
                   <td className="px-4 py-3 text-gray-800">{i.age}</td>
-                  <td className="px-4 py-3 text-gray-800">{i.date_id} • 20:00</td>
-                  <td className="px-4 py-3"><StatusPill status={i.status} /></td>
+                  <td className="px-4 py-3 text-gray-800">{i.date_id ? `${i.date_id} • 20:00` : "—"}</td>
+                  <td className="px-4 py-3">
+                    <StatusPill status={i.status} />
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-2">
                       <button
                         disabled={busyId === i.id}
-                        onClick={() => setStatus(i.id, "approved")}
+                        onClick={() => openApproveModal(i)}
                         className="rounded-md border border-emerald-200 px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
                       >
                         Onayla
@@ -195,17 +243,60 @@ export default function ApplicationsPage() {
           </tbody>
         </table>
       </div>
+
+      {/* APPROVE MODAL */}
+      {approveOpen && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900">Tanıtım Dersi Tarihi</h3>
+            <p className="mt-1 text-sm text-gray-600">
+              Başvuruyu onaylamak için ders tarih-saatini seç.
+            </p>
+
+            <div className="mt-4">
+              <label className="text-sm text-gray-700">Tarih &amp; Saat</label>
+              <input
+                type="datetime-local"
+                value={approveWhen}
+                onChange={(e) => setApproveWhen(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-black focus:ring-black/20"
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Saat dilimi: sisteminin yereli. Sunucuya ISO (UTC) gönderilir.
+              </p>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setApproveOpen(false)}
+                className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-50"
+              >
+                İptal
+              </button>
+              <button
+                disabled={!approveId || !approveWhen || busyId === approveId}
+                onClick={confirmApprove}
+                className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+              >
+                {busyId === approveId ? "Kaydediliyor…" : "Onayla & Tarih Ata"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-/* ---- küçük bileşenler ---- */
+/* ----------------- Küçük bileşenler & yardımcılar ----------------- */
 
 function StatCard({ title, value, gradient }: { title: string; value: number; gradient: string }) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
       <div className="text-xs font-medium uppercase tracking-wide text-gray-600">{title}</div>
-      <div className={`mt-2 inline-flex items-center rounded-lg bg-gradient-to-r ${gradient} px-3 py-1 text-2xl font-bold text-white`}>
+      <div
+        className={`mt-2 inline-flex items-center rounded-lg bg-gradient-to-r ${gradient} px-3 py-1 text-2xl font-bold text-white`}
+      >
         {new Intl.NumberFormat("tr-TR").format(value)}
       </div>
     </div>
@@ -219,9 +310,10 @@ function StatusPill({ status }: { status: "pending" | "approved" | "rejected" })
       : status === "pending"
       ? "bg-amber-100 text-amber-700"
       : "bg-rose-100 text-rose-700";
-  const label =
-    status === "approved" ? "Onaylandı" : status === "pending" ? "Bekliyor" : "Reddedildi";
-  return <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold ${cls}`}>{label}</span>;
+  const label = status === "approved" ? "Onaylandı" : status === "pending" ? "Bekliyor" : "Reddedildi";
+  return (
+    <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold ${cls}`}>{label}</span>
+  );
 }
 
 function FilterBtn({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
@@ -240,5 +332,15 @@ function FilterBtn({ label, active, onClick }: { label: string; active: boolean;
 function formatPhone(v: string) {
   const d = v.replace(/\D/g, "");
   if (d.length < 10) return v;
-  return `0${d.slice(0,3)} ${d.slice(3,6)} ${d.slice(6,8)} ${d.slice(8,10)}`;
+  return `0${d.slice(0, 3)} ${d.slice(3, 6)} ${d.slice(6, 8)} ${d.slice(8, 10)}`;
+}
+
+function toLocalDatetimeInputValue(d: Date) {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  const mm = pad(d.getMonth() + 1);
+  const dd = pad(d.getDate());
+  const hh = pad(d.getHours());
+  const mi = pad(d.getMinutes());
+  return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
 }
