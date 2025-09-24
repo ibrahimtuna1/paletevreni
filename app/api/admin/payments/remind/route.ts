@@ -8,7 +8,7 @@ function normalizeTR(msisdn: string): string | null {
   const digits = (msisdn || "").replace(/\D/g, "");
   if (digits.length < 10) return null;
   let d = digits.slice(-10);
-  // Güvence: +90/0 varyantlarını da yakala
+  // +90 / 0 varyantlarını da yakala
   if (!(d.length === 10 && d.startsWith("5"))) {
     if (digits.startsWith("90") && digits.length === 12) d = digits.slice(2);
     else if (digits.startsWith("0") && digits.length === 11) d = digits.slice(1);
@@ -18,11 +18,10 @@ function normalizeTR(msisdn: string): string | null {
 
 export async function POST(req: Request) {
   const t0 = Date.now();
-  const rid = Math.random().toString(36).slice(2, 10); // basit request id
+  const rid = Math.random().toString(36).slice(2, 10);
 
   // --- yetki ---
-  const cookieStore = await cookies();
-  const role = cookieStore.get("admin_session")?.value;
+  const role = (await cookies()).get("admin_session")?.value;
   if (role !== "admin") {
     console.warn(`[${rid}] AUTH_FAIL`);
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -35,15 +34,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "paymentId gerekli" }, { status: 400 });
   }
 
-  // --- Render proxy ENV ---
+  // --- env ---
   const RENDER_SMS_URL = process.env.RENDER_SMS_URL!;
-  const RENDER_SMS_TOKEN = process.env.RENDER_SMS_TOKEN!;
-  if (!RENDER_SMS_URL || !RENDER_SMS_TOKEN) {
-    console.error(`[${rid}] ENV_MISSING: RENDER_SMS_URL/TOKEN`);
-    return NextResponse.json(
-      { error: "RENDER_SMS_URL / RENDER_SMS_TOKEN eksik" },
-      { status: 500 }
-    );
+  const MSGHEADER = (process.env.NETGSM_MSGHEADER || "").trim(); // 850'li başlık/sender
+  if (!RENDER_SMS_URL) {
+    console.error(`[${rid}] ENV_MISSING: RENDER_SMS_URL`);
+    return NextResponse.json({ error: "RENDER_SMS_URL eksik" }, { status: 500 });
+  }
+  if (!MSGHEADER) {
+    console.error(`[${rid}] ENV_MISSING: NETGSM_MSGHEADER`);
+    return NextResponse.json({ error: "NETGSM_MSGHEADER eksik (ör. 8503028492)" }, { status: 500 });
   }
 
   console.info(`[${rid}] START payId=${paymentId}`);
@@ -91,9 +91,9 @@ export async function POST(req: Request) {
 
   const msg =
     (customMessage?.trim() as string) ||
-    `Merhaba, ${student?.student_name ?? "öğrenci"} için yaklaşan ödeme hatırlatmasıdır. Sorunuz varsa bize yazabilirsiniz.`;
+    `Merhaba, ${student?.student_name ?? "öğrenci"} için yaklaşan ödeme hatırlatmasıdır. Sorunuz varsa bize 0501 530 3949 numarasından bize ulaşabilirsiniz.`;
 
-  // --- Render SMS Proxy'ye istek ---
+  // --- Render SMS Proxy'ye istek (AUTH YOK) ---
   let proxyJson: any = null;
   let proxyText = "";
 
@@ -101,26 +101,21 @@ export async function POST(req: Request) {
     const payload = {
       message: msg,
       recipients: [phone],
-      // msgheader istersen buradan geçebilirsin: msgheader: process.env.NETGSM_MSGHEADER
+      msgheader: MSGHEADER, // terminalde başarılı olan örnekle aynı şekilde body’de
     };
 
-    console.info(
-      `[${rid}] PROXY_REQ -> ${RENDER_SMS_URL} | recipients=1 | phone=${phone} | msgLen=${msg.length}`
-    );
+    console.info(`[${rid}] PROXY_REQ -> ${RENDER_SMS_URL} | phone=${phone} | msgLen=${msg.length}`);
 
     const t1 = Date.now();
     const res = await fetch(RENDER_SMS_URL, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${RENDER_SMS_TOKEN}`,
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
       cache: "no-store",
     });
     const dt = Date.now() - t1;
 
-    // json parse dene; değilse text al
+    // json parse / fallback text
     proxyJson = await res.json().catch(async () => {
       proxyText = await res.text().catch(() => "");
       return null;
@@ -129,19 +124,15 @@ export async function POST(req: Request) {
     const ok = res.ok && (proxyJson?.ok ?? false);
     const bulkid = proxyJson?.bulkid ?? null;
 
-    console.info(
-      `[${rid}] PROXY_RES status=${res.status} ok=${ok} bulkid=${bulkid ?? "-"} time=${dt}ms`
-    );
-    if (!ok) {
-      console.warn(`[${rid}] PROXY_FAIL body=${proxyText || JSON.stringify(proxyJson)}`);
-    }
+    console.info(`[${rid}] PROXY_RES status=${res.status} ok=${ok} bulkid=${bulkid ?? "-"} time=${dt}ms`);
+    if (!ok) console.warn(`[${rid}] PROXY_FAIL body=${proxyText || JSON.stringify(proxyJson)}`);
 
-    // --- opsiyonel log kaydı (sms_logs) ---
+    // --- opsiyonel log kaydı ---
     try {
       await supabaseAdmin.from("sms_logs").insert({
         payment_id: paymentId,
         provider: "render-netgsm",
-        bulkid: bulkid,
+        bulkid,
         request_numbers_csv: phone,
         message_body: msg,
         response_raw: proxyJson ? JSON.stringify(proxyJson) : proxyText,

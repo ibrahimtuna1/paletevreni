@@ -3,49 +3,34 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { supabaseAdmin } from "@/lib/supabase/serverAdmin";
 
-/** Basit normalizasyon: sadece rakam bırak, son 10 haneyi al (5XXXXXXXXX) */
+/** 5XXXXXXXXX (10 hane) normalize */
 function normalizeTR(msisdn: string): string | null {
   const digits = (msisdn || "").replace(/\D/g, "");
-  if (digits.length < 10) return null;
-  let d = digits.slice(-10);
-  // Güvence: Son 10 hane 5'le başlamıyorsa +90/0 varyantlarını da yakala
-  if (!(d.length === 10 && d.startsWith("5"))) {
-    // 90XXXXXXXXXX
-    if (digits.startsWith("90") && digits.length === 12) d = digits.slice(2);
-    // 0XXXXXXXXXX
-    else if (digits.startsWith("0") && digits.length === 11) d = digits.slice(1);
-  }
+  let d = digits;
+  if (d.startsWith("90") && d.length === 12) d = d.slice(2);
+  if (d.startsWith("0") && d.length === 11) d = d.slice(1);
+  d = d.slice(-10);
   return d.length === 10 && d.startsWith("5") ? d : null;
 }
 
 export async function POST(req: Request) {
-  // --- Yetki kontrolü ---
-  const cookieStore = await cookies();
-  const role = cookieStore.get("admin_session")?.value;
-  if (role !== "admin") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  // auth
+  const role = (await cookies()).get("admin_session")?.value;
+  if (role !== "admin") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // --- Girdi ---
-  const { classId, body } = (await req.json().catch(() => ({}))) as {
-    classId?: string;
-    body?: string;
-  };
+  // input
+  const { classId, body } = await req.json().catch(() => ({} as any));
   if (!classId || !body?.trim()) {
     return NextResponse.json({ error: "classId ve body zorunlu" }, { status: 400 });
   }
 
-  // --- Render proxy ENV ---
+  // env
   const RENDER_SMS_URL = process.env.RENDER_SMS_URL!;
-  const RENDER_SMS_TOKEN = process.env.RENDER_SMS_TOKEN!;
-  if (!RENDER_SMS_URL || !RENDER_SMS_TOKEN) {
-    return NextResponse.json(
-      { error: "RENDER_SMS_URL / RENDER_SMS_TOKEN eksik" },
-      { status: 500 }
-    );
-  }
+  const MSGHEADER = (process.env.NETGSM_MSGHEADER || "").trim(); // 850'li başlık
+  if (!RENDER_SMS_URL) return NextResponse.json({ error: "RENDER_SMS_URL eksik" }, { status: 500 });
+  if (!MSGHEADER) return NextResponse.json({ error: "NETGSM_MSGHEADER eksik (ör. 8503028492)" }, { status: 500 });
 
-  // --- Sınıfın aktif öğrencileri ---
+  // alıcılar
   const { data: studs, error } = await supabaseAdmin
     .from("students")
     .select("parent_phone_e164")
@@ -54,37 +39,28 @@ export async function POST(req: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
-  // --- Alıcı listesi (normalize) ---
-  const rawNumbers = (studs ?? [])
-    .map((s: any) => s.parent_phone_e164)
-    .filter(Boolean) as string[];
-
-  const normalized = Array.from(
+  const recipients = Array.from(
     new Set(
-      rawNumbers
-        .map(normalizeTR)
+      (studs ?? [])
+        .map((s: any) => normalizeTR(s.parent_phone_e164))
         .filter((x): x is string => !!x)
     )
   );
-
-  if (normalized.length === 0) {
-    return NextResponse.json({ error: "Geçerli alıcı bulunamadı." }, { status: 400 });
+  if (recipients.length === 0) {
+    return NextResponse.json({ error: "Geçerli alıcı yok" }, { status: 400 });
   }
 
-  // --- Render SMS Proxy'ye istek ---
+  // Render'a POST (auth kapalı → Authorization header YOK)
   let proxyJson: any = null;
   let proxyText = "";
   try {
     const res = await fetch(RENDER_SMS_URL, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${RENDER_SMS_TOKEN}`,
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         message: body.trim(),
-        recipients: normalized,
-        // İstersen msgheader geçebilirsin: msgheader: process.env.NETGSM_MSGHEADER
+        recipients,
+        msgheader: MSGHEADER, // aynı PS testindeki gibi body’de yolluyoruz
       }),
       cache: "no-store",
     });
@@ -94,49 +70,33 @@ export async function POST(req: Request) {
       return null;
     });
 
-    const ok = res.ok && (proxyJson?.ok ?? true);
+    const ok = res.ok && !!proxyJson?.ok;
     const bulkid = proxyJson?.bulkid ?? null;
 
-    // Basit log objesi:
-    const log = {
-      provider: "render-netgsm",
-      requestCount: normalized.length,
-      requestPreviewCommaSeparated: normalized.join(","),
-      responseRaw: proxyJson ? JSON.stringify(proxyJson) : proxyText,
-      bulkid,
-      ok,
-      created_at: new Date().toISOString(),
-    };
-
-    // (Opsiyonel) Supabase'e logla — tablo yoksa es geçer
+    // log (opsiyonel)
     try {
       await supabaseAdmin.from("sms_logs").insert({
         class_id: classId,
-        provider: log.provider,
-        bulkid: log.bulkid,
-        request_count: log.requestCount,
-        request_numbers_csv: log.requestPreviewCommaSeparated,
+        provider: "render-netgsm",
+        bulkid,
+        request_count: recipients.length,
+        request_numbers_csv: recipients.join(","),
         message_body: body.trim(),
-        response_raw: log.responseRaw,
+        response_raw: proxyJson ? JSON.stringify(proxyJson) : proxyText,
       });
-    } catch {}
+    } catch { /* tablo yoksa geç */ }
 
     if (!ok) {
       return NextResponse.json(
-        { error: "SMS gönderim hatası (proxy)", details: proxyJson ?? proxyText, log },
+        { error: "SMS gönderim hatası (proxy)", details: proxyJson ?? proxyText },
         { status: 502 }
       );
     }
 
-    return NextResponse.json({
-      ok: true,
-      queued: normalized.length,
-      bulkid,
-      log,
-    });
+    return NextResponse.json({ ok: true, queued: recipients.length, bulkid });
   } catch (e: any) {
     return NextResponse.json(
-      { error: "Render proxy bağlantı hatası", details: e?.message, responseRaw: proxyText || null },
+      { error: "Render proxy bağlantı hatası", details: e?.message, raw: proxyText || null },
       { status: 502 }
     );
   }
