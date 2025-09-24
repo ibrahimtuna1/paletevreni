@@ -3,6 +3,10 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { supabaseAdmin } from "@/lib/supabase/serverAdmin";
 
+export const runtime = "nodejs";         // edge değil
+export const dynamic = "force-dynamic";  // kesin dinamik
+export const revalidate = 0;
+
 export async function GET(req: Request) {
   // --- yetki ---
   const cookieStore = await cookies();
@@ -11,8 +15,8 @@ export async function GET(req: Request) {
 
   // --- query params ---
   const { searchParams } = new URL(req.url);
-  const page = Number(searchParams.get("page") || "1");
-  const pageSize = Number(searchParams.get("pageSize") || "25");
+  const page = Math.max(1, Number(searchParams.get("page") || "1"));
+  const pageSize = Math.min(200, Math.max(1, Number(searchParams.get("pageSize") || "25")));
   const q = (searchParams.get("q") || "").trim();
   const status = searchParams.get("status") || "";
   const method = searchParams.get("method") || "";
@@ -20,8 +24,7 @@ export async function GET(req: Request) {
   const dateFrom = searchParams.get("date_from") || "";
   const dateTo = searchParams.get("date_to") || "";
 
-  // --- sorgu (gömülü JOIN) ---
-  // payments.* + student_packages + students(özet alanlar)
+  // --- sorgu (JOIN) ---
   let query = supabaseAdmin
     .from("payments")
     .select(`
@@ -43,17 +46,21 @@ export async function GET(req: Request) {
         )
       )
     `, { count: "exact" })
-    .order("paid_at", { ascending: false });
+    .order("paid_at", { ascending: false, nullsFirst: false });
 
   if (status) query = query.eq("status", status);
   if (method) query = query.eq("method", method);
   if (studentPackageId) query = query.eq("student_package_id", studentPackageId);
-  if (dateFrom) query = query.gte("paid_at", new Date(dateFrom).toISOString());
-  if (dateTo)   query = query.lte("paid_at", new Date(dateTo + "T23:59:59").toISOString());
-  if (q)        query = query.ilike("note", `%${q}%`); // basit arama: not içinde
+
+  // tarih filtreleri (paid_at)
+  if (dateFrom) query = query.gte("paid_at", new Date(dateFrom + "T00:00:00").toISOString());
+  if (dateTo)   query = query.lte("paid_at", new Date(dateTo   + "T23:59:59").toISOString());
+
+  // basit arama: not içinde
+  if (q) query = query.ilike("note", `%${q}%`);
 
   const from = (page - 1) * pageSize;
-  const to = from + pageSize - 1;
+  const to = Math.max(from, from + pageSize - 1);
 
   const { data, error, count } = await query.range(from, to);
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
@@ -71,7 +78,6 @@ export async function GET(req: Request) {
       period_start: p.period_start,
       period_end: p.period_end,
       note: p.note,
-      // UI’ın beklediği alanlar:
       student_name: student?.student_name ?? null,
       parent_name: student?.parent_name ?? null,
       parent_phone_e164: student?.parent_phone_e164 ?? null,
@@ -88,4 +94,9 @@ export async function GET(req: Request) {
     total: count || 0,
     summary: { totalRevenue, countByStatus, methodBreakdown },
   });
+}
+
+// bazen local/cors için istenir
+export async function OPTIONS() {
+  return NextResponse.json({ ok: true });
 }
