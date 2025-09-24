@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { supabaseAdmin } from "@/lib/supabase/serverAdmin";
 
-/** 5XXXXXXXXX (10 hane) normalize */
 function normalizeTR(msisdn: string): string | null {
   const digits = (msisdn || "").replace(/\D/g, "");
   let d = digits;
@@ -14,23 +13,20 @@ function normalizeTR(msisdn: string): string | null {
 }
 
 export async function POST(req: Request) {
-  // auth
   const role = (await cookies()).get("admin_session")?.value;
   if (role !== "admin") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // input
   const { classId, body } = await req.json().catch(() => ({} as any));
   if (!classId || !body?.trim()) {
     return NextResponse.json({ error: "classId ve body zorunlu" }, { status: 400 });
   }
 
-  // env
   const RENDER_SMS_URL = process.env.RENDER_SMS_URL!;
-  const MSGHEADER = (process.env.NETGSM_MSGHEADER || "").trim(); // 850'li başlık
   if (!RENDER_SMS_URL) return NextResponse.json({ error: "RENDER_SMS_URL eksik" }, { status: 500 });
-  if (!MSGHEADER) return NextResponse.json({ error: "NETGSM_MSGHEADER eksik (ör. 8503028492)" }, { status: 500 });
 
-  // alıcılar
+  // Env varsa onu kullan, yoksa 850’li başlığı body’ye koy
+  const MSGHEADER = (process.env.NETGSM_MSGHEADER || "8503028492").trim();
+
   const { data: studs, error } = await supabaseAdmin
     .from("students")
     .select("parent_phone_e164")
@@ -50,17 +46,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Geçerli alıcı yok" }, { status: 400 });
   }
 
-  // Render'a POST (auth kapalı → Authorization header YOK)
   let proxyJson: any = null;
   let proxyText = "";
   try {
     const res = await fetch(RENDER_SMS_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json" }, // auth yok
       body: JSON.stringify({
         message: body.trim(),
         recipients,
-        msgheader: MSGHEADER, // aynı PS testindeki gibi body’de yolluyoruz
+        msgheader: MSGHEADER, // terminalde başarılı olan gibi body’de gönder
       }),
       cache: "no-store",
     });
@@ -73,7 +68,6 @@ export async function POST(req: Request) {
     const ok = res.ok && !!proxyJson?.ok;
     const bulkid = proxyJson?.bulkid ?? null;
 
-    // log (opsiyonel)
     try {
       await supabaseAdmin.from("sms_logs").insert({
         class_id: classId,
@@ -84,7 +78,7 @@ export async function POST(req: Request) {
         message_body: body.trim(),
         response_raw: proxyJson ? JSON.stringify(proxyJson) : proxyText,
       });
-    } catch { /* tablo yoksa geç */ }
+    } catch {}
 
     if (!ok) {
       return NextResponse.json(
