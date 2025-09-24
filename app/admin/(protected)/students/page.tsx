@@ -36,12 +36,17 @@ export default function StudentsOverviewPage() {
   const [cDays, setCDays] = useState("");
   const [busy, setBusy] = useState(false);
 
-  // --- yeni: öğrenci filtre/atama UI state ---
+  // --- öğrenci filtre/atama UI state ---
   const [studentSearch, setStudentSearch] = useState("");
   const [classFilter, setClassFilter] = useState<"all" | "unassigned" | string>("all"); // string -> classId
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkTarget, setBulkTarget] = useState<string>(""); // hedef classId
   const [bulkBusy, setBulkBusy] = useState(false);
+
+  // --- YENİ: durum sekmesi (ikinci sayfa gibi) ---
+  // tabs: "Aktif", "Askıda", "Ayrıldı", "Aktif Olmayanlar", "Tümü"
+  type StatusTab = "active" | "paused" | "left" | "inactive" | "all";
+  const [statusTab, setStatusTab] = useState<StatusTab>("active");
 
   async function loadAll() {
     setErr(null);
@@ -151,13 +156,51 @@ export default function StudentsOverviewPage() {
     }
   }
 
+  // ---- YENİ: durum değiştir (tekli) ----
+  async function changeStatus(studentId: string, next: "active" | "paused" | "left") {
+    const prev = students;
+
+    // iyimser UI: 'left' veya (istersen) 'paused' olunca sınıfı boşalt
+    setStudents((xs) =>
+      xs.map((x) =>
+        x.id === studentId
+          ? {
+              ...x,
+              status: next,
+              ...(next === "left" ? { class_id: null, class_name: null } : {}),
+            }
+          : x
+      )
+    );
+
+    const res = await fetch("/api/admin/students/status", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        studentId,
+        status: next,
+        // paused durumunda da sınıftan düşmek istersen true yap:
+        // unassign: next === "paused" ? true : undefined,
+      }),
+    });
+
+    if (!res.ok) {
+      setStudents(prev);
+      const j = await res.json().catch(() => ({}));
+      alert(j?.error || "Durum güncellenemedi");
+    } else {
+      // aktif sekmesindeysek ve öğrenci artık aktif değilse görünümden düşer
+      // (filter mekanizması zaten hallediyor)
+      loadAll();
+    }
+  }
+
   // ---- toplu atama ----
   async function assignBulk() {
     if (!bulkTarget) return alert("Önce hedef sınıfı seçin.");
     if (selectedIds.size === 0) return alert("Öğrenci seçmedin.");
     setBulkBusy(true);
     try {
-      // arka arkaya simple patch; istersen servera bulk endpoint yazabiliriz
       await Promise.all(
         Array.from(selectedIds).map((id) =>
           fetch("/api/admin/classes/assign", {
@@ -180,11 +223,20 @@ export default function StudentsOverviewPage() {
   // ---- liste filtreleri ----
   const filteredStudents = useMemo(() => {
     const term = studentSearch.trim().toLowerCase();
+
     return students
       .filter((s) => {
+        // durum sekmesi filtresi
+        if (statusTab === "active") return s.status === "active";
+        if (statusTab === "paused") return s.status === "paused";
+        if (statusTab === "left") return s.status === "left";
+        if (statusTab === "inactive") return s.status !== "active"; // askıda + ayrıldı
+        return true; // "all"
+      })
+      .filter((s) => {
+        // sınıf filtresi
         if (classFilter === "all") return true;
         if (classFilter === "unassigned") return s.class_id == null;
-        // belirli sınıf
         return s.class_id === classFilter;
       })
       .filter((s) =>
@@ -193,11 +245,10 @@ export default function StudentsOverviewPage() {
           : true
       )
       .sort((a, b) => a.student_name.localeCompare(b.student_name, "tr"));
-  }, [students, classFilter, studentSearch]);
+  }, [students, classFilter, studentSearch, statusTab]);
 
   const allVisibleSelected =
-    filteredStudents.length > 0 &&
-    filteredStudents.every((s) => selectedIds.has(s.id));
+    filteredStudents.length > 0 && filteredStudents.every((s) => selectedIds.has(s.id));
 
   function toggleSelectAllVisible() {
     const next = new Set(selectedIds);
@@ -207,6 +258,46 @@ export default function StudentsOverviewPage() {
       filteredStudents.forEach((s) => next.add(s.id));
     }
     setSelectedIds(next);
+  }
+
+  // sekme butonu mini bileşeni
+  function TabBtn({
+    val,
+    label,
+    tone,
+    count,
+  }: {
+    val: StatusTab;
+    label: string;
+    tone?: "emerald" | "amber" | "rose" | "slate";
+    count?: number;
+  }) {
+    const active = statusTab === val;
+    const toneCls =
+      tone === "emerald"
+        ? "data-[a=true]:bg-emerald-600 data-[a=true]:text-white"
+        : tone === "amber"
+        ? "data-[a=true]:bg-amber-600 data-[a=true]:text-white"
+        : tone === "rose"
+        ? "data-[a=true]:bg-rose-600 data-[a=true]:text-white"
+        : "data-[a=true]:bg-slate-900 data-[a=true]:text-white";
+    return (
+      <button
+        onClick={() => setStatusTab(val)}
+        data-a={active}
+        className={`rounded-full border px-3 py-1 text-sm font-medium transition
+          ${toneCls}
+          data-[a=true]:border-transparent
+          data-[a=false]:bg-white data-[a=false]:text-slate-900 data-[a=false]:border-slate-200
+        `}
+        title={label}
+      >
+        {label}
+        {typeof count === "number" && (
+          <span className="ml-2 rounded-full bg-black/10 px-2 py-0.5 text-xs">{count}</span>
+        )}
+      </button>
+    );
   }
 
   return (
@@ -234,9 +325,7 @@ export default function StudentsOverviewPage() {
       </div>
 
       {err && (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-rose-800">
-          {err}
-        </div>
+        <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-rose-800">{err}</div>
       )}
 
       {/* Sayaçlar */}
@@ -303,17 +392,24 @@ export default function StudentsOverviewPage() {
               </li>
             );
           })}
-          {classes.length === 0 && (
-            <li className="text-sm text-gray-600">Henüz sınıf yok.</li>
-          )}
+          {classes.length === 0 && <li className="text-sm text-gray-600">Henüz sınıf yok.</li>}
         </ul>
       </div>
 
-      {/* --- YENİ BÖLÜM: Öğrenciler (Filtreli & Atama) --- */}
+      {/* --- YENİ: Sekmeler (ikinci sayfa gibi) --- */}
+      <div className="flex flex-wrap items-center gap-2">
+        <TabBtn val="active" label="Aktif" tone="emerald" count={totals.active} />
+        <TabBtn val="paused" label="Askıda" tone="amber" count={totals.paused} />
+        <TabBtn val="left" label="Ayrıldı" tone="rose" count={totals.left} />
+        <TabBtn val="inactive" label="Aktif Olmayanlar" tone="slate" count={totals.paused + totals.left} />
+        <TabBtn val="all" label="Tümü" tone="slate" count={totals.all} />
+      </div>
+
+      {/* Öğrenciler (Filtreli & Atama & Durum) */}
       <div className="space-y-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
         <div className="mb-1 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">
-            Öğrenciler (Filtreli & Atama)
+            Öğrenciler — {labelForTab(statusTab)}
           </h2>
           <div className="text-sm text-gray-700">
             Görünen: <b>{filteredStudents.length}</b> / {students.length}
@@ -335,7 +431,7 @@ export default function StudentsOverviewPage() {
               className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
               title="Sınıfa göre filtrele"
             >
-              <option value="all">Tüm Öğrenciler</option>
+              <option value="all">Tüm Sınıflar</option>
               <option value="unassigned">Sınıfa Atanmamış</option>
               {classes.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -433,28 +529,30 @@ export default function StudentsOverviewPage() {
                     )}
                   </td>
                   <td className="px-3 py-2">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                    {/* YENİ: durum seçimi */}
+                    <select
+                      value={s.status}
+                      onChange={(e) =>
+                        changeStatus(s.id, e.target.value as "active" | "paused" | "left")
+                      }
+                      className={`rounded-lg border px-2 py-1 text-sm ${
                         s.status === "active"
-                          ? "bg-emerald-100 text-emerald-900"
+                          ? "border-emerald-300 bg-emerald-50 text-emerald-900"
                           : s.status === "paused"
-                          ? "bg-amber-100 text-amber-900"
-                          : "bg-rose-100 text-rose-900"
+                          ? "border-amber-300 bg-amber-50 text-amber-900"
+                          : "border-rose-300 bg-rose-50 text-rose-900"
                       }`}
+                      title="Durumu değiştir"
                     >
-                      {s.status === "active"
-                        ? "Aktif"
-                        : s.status === "paused"
-                        ? "Askıda"
-                        : "Ayrıldı"}
-                    </span>
+                      <option value="active">Aktif</option>
+                      <option value="paused">Askıda</option>
+                      <option value="left">Ayrıldı</option>
+                    </select>
                   </td>
                   <td className="px-3 py-2">
                     <select
                       value={s.class_id || ""}
-                      onChange={(e) =>
-                        assignOne(s.id, e.target.value ? e.target.value : null)
-                      }
+                      onChange={(e) => assignOne(s.id, e.target.value ? e.target.value : null)}
                       className="w-56 rounded-lg border border-gray-300 bg-white px-2 py-1 text-sm"
                     >
                       <option value="">— Sınıf seçin —</option>
@@ -469,11 +567,8 @@ export default function StudentsOverviewPage() {
               ))}
               {filteredStudents.length === 0 && (
                 <tr>
-                  <td
-                    colSpan={6}
-                    className="px-4 py-8 text-center text-sm text-gray-700"
-                  >
-                    Seçili filtre/aramaya uygun öğrenci bulunamadı.
+                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-700">
+                    Seçili filtre/sekme/aramaya uygun öğrenci bulunamadı.
                   </td>
                 </tr>
               )}
@@ -484,10 +579,7 @@ export default function StudentsOverviewPage() {
 
       {/* Sınıf Modal */}
       {classModalOpen && (
-        <Modal
-          title={editing ? "Sınıfı Düzenle" : "Yeni Sınıf"}
-          onClose={() => setClassModalOpen(false)}
-        >
+        <Modal title={editing ? "Sınıfı Düzenle" : "Yeni Sınıf"} onClose={() => setClassModalOpen(false)}>
           <div className="space-y-3">
             <L label="Sınıf Adı *">
               <I value={cName} onChange={setCName} placeholder="Örn. Salı 20:00 - A" />
@@ -497,18 +589,12 @@ export default function StudentsOverviewPage() {
                 <I type="number" min={1} max={40} value={cCap} onChange={setCCap} />
               </L>
               <L label="Gün/Saat (ops.)">
-                <I
-                  value={cDays}
-                  onChange={setCDays}
-                  placeholder='Örn. "Salı 20:00"'
-                />
+                <I value={cDays} onChange={setCDays} placeholder='Örn. "Salı 20:00"' />
               </L>
             </div>
           </div>
           <div className="mt-5 flex justify-end gap-2">
-            <Btn ghost onClick={() => setClassModalOpen(false)}>
-              İptal
-            </Btn>
+            <Btn ghost onClick={() => setClassModalOpen(false)}>İptal</Btn>
             <Btn primary disabled={busy} onClick={saveClass}>
               {busy ? "Kaydediliyor…" : "Kaydet"}
             </Btn>
@@ -539,9 +625,7 @@ function StatCard({
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4">
       <div className="text-sm text-gray-700">{label}</div>
-      <div
-        className={`mt-1 inline-flex items-center rounded-lg px-2 py-1 text-xl font-bold ${map[tone]}`}
-      >
+      <div className={`mt-1 inline-flex items-center rounded-lg px-2 py-1 text-xl font-bold ${map[tone]}`}>
         {value}
       </div>
     </div>
@@ -590,12 +674,24 @@ function Btn({ primary, ghost, disabled, children, ...rest }: any) {
     ? "border border-gray-300 bg-white text-gray-900 hover:bg-gray-50"
     : "bg-black text-white";
   return (
-    <button
-      disabled={disabled}
-      {...rest}
-      className={`rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-60 ${cls}`}
-    >
+    <button disabled={disabled} {...rest} className={`rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-60 ${cls}`}>
       {children}
     </button>
   );
+}
+
+// YENİ: sekme başlığı
+function labelForTab(t: "active" | "paused" | "left" | "inactive" | "all") {
+  switch (t) {
+    case "active":
+      return "Aktif";
+    case "paused":
+      return "Askıda";
+    case "left":
+      return "Ayrıldı";
+    case "inactive":
+      return "Aktif Olmayanlar";
+    default:
+      return "Tümü";
+  }
 }

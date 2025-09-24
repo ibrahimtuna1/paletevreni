@@ -14,8 +14,12 @@ export async function GET(req: Request) {
   const assigned = url.searchParams.get("assigned"); // 'none' | null
   const status = url.searchParams.get("status");     // 'active' | 'paused' | 'left' | null
   const q = url.searchParams.get("q")?.trim() || "";
+  const withTotals = url.searchParams.get("withTotals") === "1";
 
-  let qy = supabaseAdmin.from("students").select("*").order("created_at", { ascending: false });
+  let qy = supabaseAdmin
+    .from("students")
+    .select("*")
+    .order("created_at", { ascending: false });
 
   if (classId) qy = qy.eq("class_id", classId);
   else if (assigned === "none") qy = qy.is("class_id", null);
@@ -25,7 +29,6 @@ export async function GET(req: Request) {
   }
 
   if (q) {
-    // öğrenci adı, veli adı, telefon içinde arama
     qy = qy.or(
       `student_name.ilike.%${q}%,parent_name.ilike.%${q}%,parent_phone_e164.ilike.%${q}%`
     );
@@ -34,6 +37,7 @@ export async function GET(req: Request) {
   const { data, error } = await qy;
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
+  // sınıf isimleri
   const { data: classes } = await supabaseAdmin.from("classes").select("id,name,capacity");
   const map = new Map((classes ?? []).map((c: any) => [c.id, { name: c.name, capacity: c.capacity }]));
 
@@ -42,5 +46,19 @@ export async function GET(req: Request) {
     class_name: s.class_id ? map.get(s.class_id)?.name ?? null : null,
   }));
 
-  return NextResponse.json({ items });
+  // opsiyonel: toplamlar
+  let totals: { all: number; active: number; paused: number; left: number } | undefined;
+  if (withTotals) {
+    const { data: tdata, error: terr } = await supabaseAdmin
+      .from("students")
+      .select("status", { count: "exact", head: false });
+    if (!terr) {
+      const active = tdata.filter((x: any) => x.status === "active").length;
+      const paused = tdata.filter((x: any) => x.status === "paused").length;
+      const left   = tdata.filter((x: any) => x.status === "left").length;
+      totals = { all: tdata.length, active, paused, left };
+    }
+  }
+
+  return NextResponse.json({ items, ...(withTotals ? { totals } : {}) });
 }
