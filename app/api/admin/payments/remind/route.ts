@@ -7,49 +7,46 @@ import { supabaseAdmin } from "@/lib/supabase/serverAdmin";
 function normalizeTR(msisdn: string): string | null {
   const digits = (msisdn || "").replace(/\D/g, "");
   if (digits.length < 10) return null;
-  const last10 = digits.slice(-10);
-  return last10.startsWith("5") ? last10 : null;
-}
-
-function buildNetgsmXml({
-  usercode, password, msgheader, message, recipients,
-}: {
-  usercode: string; password: string; msgheader: string; message: string; recipients: string[];
-}) {
-  const noTags = recipients.map((n) => `<no>${n}</no>`).join("");
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<mainbody>
-  <header>
-    <company dil="TR">Netgsm</company>
-    <usercode>${usercode}</usercode>
-    <password>${password}</password>
-    <type>1:n</type>
-    <msgheader>${msgheader}</msgheader>
-  </header>
-  <body>
-    <msg><![CDATA[${message}]]></msg>
-    ${noTags}
-  </body>
-</mainbody>`;
+  let d = digits.slice(-10);
+  // Güvence: +90/0 varyantlarını da yakala
+  if (!(d.length === 10 && d.startsWith("5"))) {
+    if (digits.startsWith("90") && digits.length === 12) d = digits.slice(2);
+    else if (digits.startsWith("0") && digits.length === 11) d = digits.slice(1);
+  }
+  return d.length === 10 && d.startsWith("5") ? d : null;
 }
 
 export async function POST(req: Request) {
+  const t0 = Date.now();
+  const rid = Math.random().toString(36).slice(2, 10); // basit request id
+
   // --- yetki ---
   const cookieStore = await cookies();
   const role = cookieStore.get("admin_session")?.value;
-  if (role !== "admin") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (role !== "admin") {
+    console.warn(`[${rid}] AUTH_FAIL`);
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
-  const { paymentId, customMessage } = await req.json();
+  // --- input ---
+  const { paymentId, customMessage } = await req.json().catch(() => ({}));
+  if (!paymentId) {
+    console.warn(`[${rid}] BAD_REQ: paymentId yok`);
+    return NextResponse.json({ error: "paymentId gerekli" }, { status: 400 });
+  }
 
-  const USERCODE = process.env.NETGSM_USERCODE!;
-  const PASSWORD = process.env.NETGSM_PASSWORD!;
-  const MSGHEADER = process.env.NETGSM_MSGHEADER!;
-  if (!USERCODE || !PASSWORD || !MSGHEADER) {
+  // --- Render proxy ENV ---
+  const RENDER_SMS_URL = process.env.RENDER_SMS_URL!;
+  const RENDER_SMS_TOKEN = process.env.RENDER_SMS_TOKEN!;
+  if (!RENDER_SMS_URL || !RENDER_SMS_TOKEN) {
+    console.error(`[${rid}] ENV_MISSING: RENDER_SMS_URL/TOKEN`);
     return NextResponse.json(
-      { error: "NETGSM_USERCODE / NETGSM_PASSWORD / NETGSM_MSGHEADER eksik" },
+      { error: "RENDER_SMS_URL / RENDER_SMS_TOKEN eksik" },
       { status: 500 }
     );
   }
+
+  console.info(`[${rid}] START payId=${paymentId}`);
 
   // payments.student_package_id -> student_packages.id -> students.student_id
   const { data: rows, error } = await supabaseAdmin
@@ -72,58 +69,102 @@ export async function POST(req: Request) {
     .eq("id", paymentId)
     .limit(1);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) {
+    console.error(`[${rid}] DB_ERR: ${error.message}`);
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
 
   const p: any = rows?.[0];
-  if (!p) return NextResponse.json({ error: "Kayıt bulunamadı" }, { status: 404 });
+  if (!p) {
+    console.warn(`[${rid}] NOT_FOUND: payment`);
+    return NextResponse.json({ error: "Kayıt bulunamadı" }, { status: 404 });
+  }
 
-  // --- DİKKAT: students tekil ya da dizi olabilir. Güvenli çıkarım:
+  // students tekil/dizi olabilir
   const studentRel = p?.student_packages?.students;
-  const student = Array.isArray(studentRel) ? studentRel[0] : studentRel; // dizi ise ilkini al
+  const student = Array.isArray(studentRel) ? studentRel[0] : studentRel;
   const phone = normalizeTR(student?.parent_phone_e164 || "");
-  if (!phone) return NextResponse.json({ error: "Geçerli telefon yok" }, { status: 400 });
+  if (!phone) {
+    console.warn(`[${rid}] NO_PHONE or invalid`);
+    return NextResponse.json({ error: "Geçerli telefon yok" }, { status: 400 });
+  }
 
   const msg =
     (customMessage?.trim() as string) ||
     `Merhaba, ${student?.student_name ?? "öğrenci"} için yaklaşan ödeme hatırlatmasıdır. Sorunuz varsa bize yazabilirsiniz.`;
 
-  // Netgsm gönder
-  let text = "";
+  // --- Render SMS Proxy'ye istek ---
+  let proxyJson: any = null;
+  let proxyText = "";
+
   try {
-    const res = await fetch("https://api.netgsm.com.tr/sms/send/xml", {
+    const payload = {
+      message: msg,
+      recipients: [phone],
+      // msgheader istersen buradan geçebilirsin: msgheader: process.env.NETGSM_MSGHEADER
+    };
+
+    console.info(
+      `[${rid}] PROXY_REQ -> ${RENDER_SMS_URL} | recipients=1 | phone=${phone} | msgLen=${msg.length}`
+    );
+
+    const t1 = Date.now();
+    const res = await fetch(RENDER_SMS_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/xml; charset=utf-8" },
-      body: buildNetgsmXml({
-        usercode: USERCODE,
-        password: PASSWORD,
-        msgheader: MSGHEADER,
-        message: msg,
-        recipients: [phone],
-      }),
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${RENDER_SMS_TOKEN}`,
+      },
+      body: JSON.stringify(payload),
+      cache: "no-store",
     });
-    text = await res.text();
+    const dt = Date.now() - t1;
+
+    // json parse dene; değilse text al
+    proxyJson = await res.json().catch(async () => {
+      proxyText = await res.text().catch(() => "");
+      return null;
+    });
+
+    const ok = res.ok && (proxyJson?.ok ?? false);
+    const bulkid = proxyJson?.bulkid ?? null;
+
+    console.info(
+      `[${rid}] PROXY_RES status=${res.status} ok=${ok} bulkid=${bulkid ?? "-"} time=${dt}ms`
+    );
+    if (!ok) {
+      console.warn(`[${rid}] PROXY_FAIL body=${proxyText || JSON.stringify(proxyJson)}`);
+    }
+
+    // --- opsiyonel log kaydı (sms_logs) ---
+    try {
+      await supabaseAdmin.from("sms_logs").insert({
+        payment_id: paymentId,
+        provider: "render-netgsm",
+        bulkid: bulkid,
+        request_numbers_csv: phone,
+        message_body: msg,
+        response_raw: proxyJson ? JSON.stringify(proxyJson) : proxyText,
+      });
+      console.info(`[${rid}] DB_LOG ok`);
+    } catch (e: any) {
+      console.warn(`[${rid}] DB_LOG skip: ${e?.message || e}`);
+    }
+
+    if (!ok) {
+      return NextResponse.json(
+        { error: "SMS gönderim hatası (proxy)", details: proxyJson ?? proxyText },
+        { status: 502 }
+      );
+    }
+
+    console.info(`[${rid}] DONE total=${Date.now() - t0}ms`);
+    return NextResponse.json({ ok: true, bulkid, queued: 1 });
   } catch (e: any) {
+    console.error(`[${rid}] PROXY_ERR: ${e?.message || e}`);
     return NextResponse.json(
-      { error: "Netgsm bağlantı hatası", details: e?.message || String(e) },
+      { error: "Render proxy bağlantı hatası", details: e?.message || String(e) },
       { status: 502 }
     );
   }
-
-  const ok = /^00\s+\d+/.test(text); // "00 <bulkid>"
-  if (!ok) return NextResponse.json({ error: "Netgsm hatası", details: text }, { status: 502 });
-
-  // opsiyonel log
-  try {
-    await supabaseAdmin.from("sms_logs").insert({
-      payment_id: paymentId,
-      provider: "netgsm",
-      request_numbers_csv: phone,
-      message_body: msg,
-      response_raw: text,
-    });
-  } catch {
-    /* tablo yoksa sessiz geç */
-  }
-
-  return NextResponse.json({ ok: true, response: text });
 }

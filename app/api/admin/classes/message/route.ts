@@ -7,41 +7,15 @@ import { supabaseAdmin } from "@/lib/supabase/serverAdmin";
 function normalizeTR(msisdn: string): string | null {
   const digits = (msisdn || "").replace(/\D/g, "");
   if (digits.length < 10) return null;
-  const last10 = digits.slice(-10);
-  return last10.startsWith("5") && last10.length === 10 ? last10 : null;
-}
-
-/** Netgsm XML gövdesini hazırla (1:n) */
-function buildNetgsmXml({
-  usercode,
-  password,
-  msgheader,
-  message,
-  recipients, // 10 haneli string[]
-}: {
-  usercode: string;
-  password: string;
-  msgheader: string;
-  message: string;
-  recipients: string[];
-}) {
-  const noTags = recipients.map((n) => `<no>${n}</no>`).join("");
-  // company dil="TR" -> Türkçe karakter seti için örneklerde öneriliyor
-  // Endpoint: https://api.netgsm.com.tr/sms/send/xml  (XML POST 1:n) :contentReference[oaicite:2]{index=2}
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<mainbody>
-  <header>
-    <company dil="TR">Netgsm</company>
-    <usercode>${usercode}</usercode>
-    <password>${password}</password>
-    <type>1:n</type>
-    <msgheader>${msgheader}</msgheader>
-  </header>
-  <body>
-    <msg><![CDATA[${message}]]></msg>
-    ${noTags}
-  </body>
-</mainbody>`;
+  let d = digits.slice(-10);
+  // Güvence: Son 10 hane 5'le başlamıyorsa +90/0 varyantlarını da yakala
+  if (!(d.length === 10 && d.startsWith("5"))) {
+    // 90XXXXXXXXXX
+    if (digits.startsWith("90") && digits.length === 12) d = digits.slice(2);
+    // 0XXXXXXXXXX
+    else if (digits.startsWith("0") && digits.length === 11) d = digits.slice(1);
+  }
+  return d.length === 10 && d.startsWith("5") ? d : null;
 }
 
 export async function POST(req: Request) {
@@ -61,14 +35,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "classId ve body zorunlu" }, { status: 400 });
   }
 
-  // --- Netgsm env ---
-  const USERCODE = process.env.NETGSM_USERCODE!;
-  const PASSWORD = process.env.NETGSM_PASSWORD!;
-  const MSGHEADER = process.env.NETGSM_MSGHEADER!; // Netgsm panelinde onaylı başlık
-
-  if (!USERCODE || !PASSWORD || !MSGHEADER) {
+  // --- Render proxy ENV ---
+  const RENDER_SMS_URL = process.env.RENDER_SMS_URL!;
+  const RENDER_SMS_TOKEN = process.env.RENDER_SMS_TOKEN!;
+  if (!RENDER_SMS_URL || !RENDER_SMS_TOKEN) {
     return NextResponse.json(
-      { error: "NETGSM_USERCODE / NETGSM_PASSWORD / NETGSM_MSGHEADER eksik" },
+      { error: "RENDER_SMS_URL / RENDER_SMS_TOKEN eksik" },
       { status: 500 }
     );
   }
@@ -99,39 +71,40 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Geçerli alıcı bulunamadı." }, { status: 400 });
   }
 
-  // --- Netgsm XML ---
-  const xml = buildNetgsmXml({
-    usercode: USERCODE,
-    password: PASSWORD,
-    msgheader: MSGHEADER,
-    message: body.trim(),
-    recipients: normalized,
-  });
-
-  // --- İstek (XML POST) ---
-  let netgsmText = "";
+  // --- Render SMS Proxy'ye istek ---
+  let proxyJson: any = null;
+  let proxyText = "";
   try {
-    const res = await fetch("https://api.netgsm.com.tr/sms/send/xml", {
+    const res = await fetch(RENDER_SMS_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/xml; charset=utf-8" },
-      body: xml,
-      // Netgsm IP kısıtı varsa 30 hata kodu dönebilir (dokümanlarda örneklenmiş). :contentReference[oaicite:3]{index=3}
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${RENDER_SMS_TOKEN}`,
+      },
+      body: JSON.stringify({
+        message: body.trim(),
+        recipients: normalized,
+        // İstersen msgheader geçebilirsin: msgheader: process.env.NETGSM_MSGHEADER
+      }),
+      cache: "no-store",
     });
 
-    netgsmText = await res.text();
+    proxyJson = await res.json().catch(async () => {
+      proxyText = await res.text().catch(() => "");
+      return null;
+    });
 
-    // Ör: "00 1311033503" -> başarı + bulkid
-    const okMatch = netgsmText.match(/^(?:00)\s+(\d+)/);
-    const isOk = !!okMatch;
+    const ok = res.ok && (proxyJson?.ok ?? true);
+    const bulkid = proxyJson?.bulkid ?? null;
 
     // Basit log objesi:
     const log = {
-      provider: "netgsm",
+      provider: "render-netgsm",
       requestCount: normalized.length,
-      requestPreviewCommaSeparated: normalized.join(","), // İstediğin gibi virgülle de önizleme
-      responseRaw: netgsmText,
-      bulkid: okMatch ? okMatch[1] : null,
-      ok: isOk,
+      requestPreviewCommaSeparated: normalized.join(","),
+      responseRaw: proxyJson ? JSON.stringify(proxyJson) : proxyText,
+      bulkid,
+      ok,
       created_at: new Date().toISOString(),
     };
 
@@ -146,13 +119,11 @@ export async function POST(req: Request) {
         message_body: body.trim(),
         response_raw: log.responseRaw,
       });
-    } catch {
-      // tablo yoksa sessiz geç
-    }
+    } catch {}
 
-    if (!isOk) {
+    if (!ok) {
       return NextResponse.json(
-        { error: "Netgsm gönderim hatası", details: netgsmText, log },
+        { error: "SMS gönderim hatası (proxy)", details: proxyJson ?? proxyText, log },
         { status: 502 }
       );
     }
@@ -160,12 +131,12 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       queued: normalized.length,
-      bulkid: okMatch![1],
+      bulkid,
       log,
     });
   } catch (e: any) {
     return NextResponse.json(
-      { error: "Netgsm bağlantı hatası", details: e?.message, responseRaw: netgsmText || null },
+      { error: "Render proxy bağlantı hatası", details: e?.message, responseRaw: proxyText || null },
       { status: 502 }
     );
   }
