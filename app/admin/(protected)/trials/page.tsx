@@ -90,6 +90,12 @@ export default function TrialsPage() {
   const [mWhen, setMWhen] = useState<string>(() => `${ymd(new Date())}T20:00`);
   const [manualBusy, setManualBusy] = useState(false);
 
+  // --- ADDED: Günlük toplu mesaj composer state'leri
+  const [msgOpen, setMsgOpen] = useState(false);
+  const [msgText, setMsgText] = useState("");
+  const [msgBusy, setMsgBusy] = useState(false);
+  const MSG_MAX = 500;
+
   // 7 günlük menü
   const days = useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => {
@@ -126,6 +132,8 @@ export default function TrialsPage() {
     // aktif gün değişince manuel formun tarihini de günün 20:00’ına çek
     setMWhen(`${activeDay}T20:00`);
     load();
+    // msgText resetlemek istersen:
+    // setMsgText(""); setMsgOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeDay]);
 
@@ -183,6 +191,37 @@ export default function TrialsPage() {
     setPkgId("");
     setPaidAmount("");
     await load(); // listeyi tazele
+  }
+
+  // --- ADDED: Seçili güne ait listedeki tüm trial'lara mesaj gönder
+  async function sendDayMessage() {
+    if (!msgText.trim()) {
+      alert("Mesaj boş olamaz.");
+      return;
+    }
+    if (rows.length === 0) {
+      alert("Bu gün için kayıtlı öğrenci yok.");
+      return;
+    }
+    setMsgBusy(true);
+    const res = await fetch("/api/admin/trials/message", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        day: activeDay, // YYYY-MM-DD
+        trial_ids: rows.map((r) => r.id),
+        message: msgText.trim(),
+      }),
+    });
+    const j = await res.json().catch(() => ({}));
+    setMsgBusy(false);
+    if (!res.ok) {
+      alert(j?.error || "Mesaj gönderilemedi");
+      return;
+    }
+    setMsgText("");
+    setMsgOpen(false);
+    alert("Mesaj gönderildi.");
   }
 
   // *** Manuel başvuru kaydet (yeni) ***
@@ -289,6 +328,70 @@ export default function TrialsPage() {
           })}
         </div>
       </div>
+
+      {/* --- ADDED: Günlük toplu mesaj composer --- */}
+      {rows.length > 0 && (
+        <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-semibold text-indigo-900">Günlük Mesaj</h2>
+                <span className="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-indigo-700">
+                  Alıcı: {rows.length} öğrenci
+                </span>
+              </div>
+              <p className="mt-1 text-sm text-indigo-800/90">
+                {trDay(new Date(activeDay))} günü için listelenen tanıtım dersi öğrencilerine toplu mesaj gönder.
+              </p>
+            </div>
+            <button
+              onClick={() => setMsgOpen((v) => !v)}
+              className="rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-indigo-50"
+            >
+              {msgOpen ? "Kapat" : "Mesaj Yaz"}
+            </button>
+          </div>
+
+          {msgOpen && (
+            <div className="mt-3">
+              <textarea
+                value={msgText}
+                onChange={(e) => {
+                  if (e.target.value.length <= MSG_MAX) setMsgText(e.target.value);
+                }}
+                rows={4}
+                placeholder="Örn: Merhaba, tanıtım dersimiz bugün 20:00’da. Sorunuz olursa bu mesajı yanıtlayabilirsiniz."
+                className="w-full rounded-lg border border-indigo-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-indigo-400 focus:border-indigo-500 focus:ring-indigo-200"
+              />
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-xs text-indigo-800/80">{msgText.length}/{MSG_MAX}</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={msgBusy}
+                    onClick={() =>
+                      setMsgText(
+                        `Merhaba, tanıtım dersimiz bugün ${new Date(activeDay).toLocaleDateString("tr-TR", { weekday: "long" })} saat 20:00’da yapılacaktır. Sorunuz olursa bu mesaja yanıt verebilirsiniz. Görüşmek üzere!`
+                      )
+                    }
+                    className="rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50"
+                  >
+                    Hızlı Şablon
+                  </button>
+                  <button
+                    type="button"
+                    disabled={msgBusy || !msgText.trim()}
+                    onClick={sendDayMessage}
+                    className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
+                  >
+                    {msgBusy ? "Gönderiliyor…" : "Gönder"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Hata uyarısı */}
       {err && <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-rose-700">{err}</div>}
