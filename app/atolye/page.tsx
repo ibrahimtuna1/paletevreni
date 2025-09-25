@@ -1,6 +1,7 @@
 // app/atolye/page.tsx
 import Image from "next/image";
 import Link from "next/link";
+import Testimonials from "./Testimonials";
 
 export const metadata = {
   title: "Canlı Atölye Dersleri | Palet Evreni",
@@ -10,15 +11,23 @@ export const metadata = {
 
 export default function AtolyePage() {
   return (
-    <main className="bg-white text-slate-900">
-      {/* Hero benzeri üst bölüm */}
+    <main className="relative text-slate-900">
+      {/* 🌸 Tüm sayfa arka plan resmi */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 -z-20 bg-[url('/images/atolye-bg.png')] bg-top bg-no-repeat bg-cover"
+      />
+      {/* Okunabilirlik için yumuşak overlay */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 bg-white/70" />
+
+      {/* Hero */}
       <section className="relative">
         <div className="mx-auto grid max-w-7xl grid-cols-1 items-center gap-8 px-4 py-12 sm:px-6 md:grid-cols-2 lg:py-16">
           {/* Görsel */}
           <div className="order-2 md:order-1">
-            <div className="relative mx-auto aspect-[4/3] w-full max-w-[560px] overflow-hidden rounded-3xl border border-slate-200 bg-slate-50 shadow-sm">
+            <div className="relative mx-auto aspect-[4/3] w-full max-w-[560px] overflow-hidden rounded-3xl border border-rose-100/70 bg-white/70 shadow-sm backdrop-blur-[1px]">
               <Image
-                src="/images/atolye-hero.png" // elinde yoksa /images/hero-figure2.png kullan
+                src="/images/atolyee-hero.png"
                 alt="Canlı atölye derslerinde mutlu çocuk"
                 fill
                 className="object-cover"
@@ -30,18 +39,18 @@ export default function AtolyePage() {
 
           {/* Metin */}
           <div className="order-1 md:order-2">
-            <p className="text-xs font-extrabold uppercase tracking-widest text-fuchsia-700">
+            <p className="text-xs font-extrabold uppercase tracking-widest text-rose-600">
               Palet Evreni ile
             </p>
             <h1 className="mt-2 text-3xl font-extrabold leading-tight sm:text-4xl">
-              Çocukların{" "}
-              <span className="text-fuchsia-700">Resim</span> ve{" "}
-              <span className="text-fuchsia-700">El becerileri</span> gelişiyor!
+              Çocukların <span className="text-rose-600">Resim</span> ve{" "}
+              <span className="text-rose-600">El becerileri</span> gelişiyor!
             </h1>
 
             <h2 className="mt-6 text-xl font-bold">Peki nasıl?</h2>
 
-            <ul className="mt-4 space-y-2 text-lg">
+            {/* Üst maddeler — tipografi eşitlendi */}
+            <ul className="mt-4 space-y-2 text-[17px] sm:text-lg font-medium text-slate-800">
               {[
                 "Çizim Teknikleri",
                 "Canlı Dersler",
@@ -49,87 +58,111 @@ export default function AtolyePage() {
                 "Ödüllendirme Sistemi",
               ].map((item) => (
                 <li key={item} className="flex items-start gap-3">
-                  <span className="mt-1 inline-block h-3.5 w-3.5 flex-none rounded-full bg-fuchsia-600" />
-                  <span className="font-medium">{item}</span>
+                  <span className="mt-1 inline-block h-3.5 w-3.5 flex-none rounded-full bg-rose-500" />
+                  <span>{item}</span>
                 </li>
               ))}
             </ul>
 
-            <ul className="mt-4 ml-1 space-y-1 text-[17px] text-slate-700">
-              <li>• Düzenli rutinler oluşturur.</li>
-              <li>• Öğrenmeyi eğlenceli hâle getirir.</li>
-              <li>• Motivasyonu artırır.</li>
-              <li>• Potansiyeli açığa çıkarır.</li>
+            {/* Alt maddeler — aynı tipografi + aynı dot */}
+            <ul className="mt-4 space-y-2 text-[17px] sm:text-lg font-medium text-slate-800">
+              {[
+                "Düzenli rutinler oluşturur.",
+                "Öğrenmeyi eğlenceli hâle getirir.",
+                "Motivasyonu artırır.",
+                "Potansiyeli açığa çıkarır.",
+              ].map((item) => (
+                <li key={item} className="flex items-start gap-3">
+                  <span className="mt-1 inline-block h-3.5 w-3.5 flex-none rounded-full bg-rose-500" />
+                  <span>{item}</span>
+                </li>
+              ))}
             </ul>
 
-            <div className="mt-7 flex flex-wrap gap-3">
-              <Link
-                href="/basvuru"
-                className="rounded-full bg-fuchsia-600 px-6 py-3 font-semibold text-white shadow-lg transition hover:bg-fuchsia-500"
-              >
-                Ücretsiz Tanıtım Dersine Katıl
-              </Link>
-              <Link
-                href="/#paketler"
-                className="rounded-full border border-slate-300 px-6 py-3 font-semibold text-slate-800 transition hover:bg-slate-50"
-              >
-                Paketleri İncele
-              </Link>
-            </div>
+            {/* ⛔ Hero CTA kaldırıldı */}
           </div>
         </div>
-
-        {/* Arka plan süsü */}
-        <div className="pointer-events-none absolute inset-0 -z-10 opacity-70 [background:radial-gradient(600px_200px_at_20%_20%,#f5e7ff,transparent),radial-gradient(400px_160px_at_85%_30%,#e6fbff,transparent)]" />
       </section>
 
-      {/* Mini özellikler bloğu */}
-      <section className="border-t border-slate-100">
-        <div className="mx-auto grid max-w-7xl grid-cols-1 gap-6 px-4 py-12 sm:px-6 md:grid-cols-3">
-          {[
-            {
-              t: "Canlı Etkileşim",
-              d: "Soru–cevap ve birebir yönlendirme ile aktif öğrenme.",
-            },
-            {
-              t: "Kayıt & Geri Bildirim",
-              d: "Ders kayıtları, ödev yükleme ve kişisel yorumlar.",
-            },
-            {
-              t: "Takip & Motivasyon",
-              d: "Rutin planı, rozet/ödül sistemi ve ilerleme görünürlüğü.",
-            },
-          ].map((c) => (
-            <div
-              key={c.t}
-              className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
-            >
-              <h3 className="text-lg font-semibold">{c.t}</h3>
-              <p className="mt-2 text-slate-700">{c.d}</p>
-            </div>
-          ))}
-        </div>
-      </section>
+      {/* Kazanımlar */}
+      <section className="border-t border-rose-100/70">
+        <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6">
+          <h2 className="text-center text-2xl font-extrabold sm:text-3xl">
+            Kazanımlar
+          </h2>
 
-      {/* Son CTA */}
-      <section className="border-t border-slate-100">
-        <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="mt-8 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+            {[
+              {
+                title: "Kaliteli Zaman Geçirsin",
+                desc:
+                  "Ekran süresini verimli, eğlenceli ve öğretici aktivitelere çeviriyoruz.",
+                emoji: "😊",
+                classes:
+                  "bg-rose-50 border-rose-100 hover:bg-rose-100 hover:border-rose-200",
+                iconBg: "bg-rose-100",
+                iconHoverBg: "group-hover:bg-rose-200",
+              },
+              {
+                title: "Dikkat ve Odaklanma Gelişsin",
+                desc:
+                  "Özel tasarlanmış etkinliklerle dikkat ve konsantrasyon süresi artar.",
+                emoji: "🎯",
+                classes:
+                  "bg-rose-50 border-rose-100 hover:bg-rose-100 hover:border-rose-200",
+                iconBg: "bg-rose-100",
+                iconHoverBg: "group-hover:bg-rose-200",
+              },
+              {
+                title: "Becerileri Gelişsin",
+                desc:
+                  "Algılama, mantık kurma ve problem çözme kapasitesi güçlenir.",
+                emoji: "🧩",
+                classes:
+                  "bg-rose-50 border-rose-100 hover:bg-rose-100 hover:border-rose-200",
+                iconBg: "bg-rose-100",
+                iconHoverBg: "group-hover:bg-rose-200",
+              },
+              {
+                title: "Özgüveni Artsın",
+                desc:
+                  "Başarılarını fark eden çocuk, yeni öğrenmelere gönüllü hale gelir.",
+                emoji: "🦸‍♂️",
+                classes:
+                  "bg-rose-50 border-rose-100 hover:bg-rose-100 hover:border-rose-200",
+                iconBg: "bg-rose-100",
+                iconHoverBg: "group-hover:bg-rose-200",
+              },
+            ].map((f) => (
+              <div
+                key={f.title}
+                className={`group rounded-3xl border p-6 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md ${f.classes}`}
+              >
+                <div
+                  className={`mb-4 inline-grid h-16 w-16 place-items-center rounded-2xl text-3xl transition-colors ${f.iconBg} ${f.iconHoverBg}`}
+                >
+                  <span aria-hidden>{f.emoji}</span>
+                </div>
+                <h3 className="text-lg font-bold">{f.title}</h3>
+                <p className="mt-2 text-slate-700">{f.desc}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Alt CTA bırakıldı (istersen bunu da kaldırırız) */}
+          <div className="mt-10 text-center">
             <Link
               href="/basvuru"
-              className="rounded-full bg-fuchsia-600 px-6 py-3 font-semibold text-white shadow-lg transition hover:bg-fuchsia-500"
+              className="inline-flex items-center justify-center rounded-2xl bg-orange-500 px-8 py-4 text-base font-extrabold text-white shadow-lg transition hover:bg-orange-400 active:scale-[.99]"
             >
-              Hemen Başvur
-            </Link>
-            <Link
-              href="/#sss"
-              className="rounded-full border border-slate-300 px-6 py-3 font-semibold text-slate-800 transition hover:bg-slate-50"
-            >
-              SSS’yi Gör
+              Ücretsiz Tanıtım Dersi Başvurusu
             </Link>
           </div>
         </div>
       </section>
+
+      {/* Veli Memnuniyeti */}
+      <Testimonials />
     </main>
   );
 }

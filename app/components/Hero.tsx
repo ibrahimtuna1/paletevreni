@@ -35,11 +35,11 @@ export default function Hero() {
     {
       img: "/images/hero-figure2.png",
       alt: "Canlı Dersler",
-      titleTop: "Canlı",
-      titleGradient: "Atölye Dersleri",
-      desc: "Her hafta canlı yayınlanan derslerde eğitmenle birebir soru-cevap.",
-      ctaText: "Detaylı Bilgi Al",   // ✅ güncellendi
-      ctaHref: "/atolye",            // ✅ yeni sayfaya gider
+      titleTop: "PALET EVRENİ",
+      titleGradient: "Eğitim Modelimiz",
+      desc: "Çocukların merakını projeye çeviren akış: kısa anlatım → uygulama → paylaşım. Düzenli, eğlenceli, ölçülebilir.",
+      ctaText: "Detaylı Bilgi Al",
+      ctaHref: "/atolye",
       palette: { top: "#12061a", bottom: "#008e9a" },
     },
     {
@@ -48,8 +48,8 @@ export default function Hero() {
       titleTop: "Esnek",
       titleGradient: "Paketlerimiz",
       desc: "Çocuğunuzun ihtiyacına uygun esnek paket seçenekleri.",
-      ctaText: "Paketlerimizi Gör",
-      ctaHref: "#paketler",
+      ctaText: "Paketlerimiz",
+      ctaHref: "/#programlar",
       palette: { top: "#1a0f00", bottom: "#cc5a00" },
     },
   ];
@@ -264,7 +264,7 @@ export default function Hero() {
   };
 
   return (
-    <section id="top" className="relative overflow-hidden" style={{ minHeight: "100svh" }}>
+    <section id="top" className="relative overflow-hidden" style={{ minHeight: "82svh" }}>
       {/* Arka plan */}
       <div
         className="fixed inset-0 -z-30"
@@ -298,9 +298,8 @@ export default function Hero() {
 
           {/* NAV */}
           <nav className="ml-auto hidden md:flex items-center gap-3 text-sm">
-            <a href="#paketler" className="btn-gpill from-emerald-500 via-emerald-600 to-emerald-500">Paketlerimiz</a>
-            <a href="tanitim-videolari" className="btn-gpill from-cyan-500 via-blue-500 to-cyan-500">Tanıtım Videoları</a>
-            {/* /hakkimizda slug'ı: ASCII */}
+            <a href="/#programlar" className="btn-gpill from-emerald-500 via-emerald-600 to-emerald-500">Paketlerimiz</a>
+            <a href="/tanitim-videolari" className="btn-gpill from-cyan-500 via-blue-500 to-cyan-500">Tanıtım Videoları</a>
             <a href="/hakkimizda" className="btn-gpill from-pink-500 via-violet-500 to-pink-500">Hakkımızda</a>
             <a href="#iletisim" className="btn-gpill from-amber-500 via-rose-500 to-amber-500">İletişim</a>
           </nav>
@@ -310,23 +309,40 @@ export default function Hero() {
       <div className="h-16 md:h-[92px]" aria-hidden />
 
       {/* SLIDE TRACK */}
-      <div className="relative z-20" style={{ minHeight: "calc(100svh - 0px)" }}>
-        <div className="relative h-[calc(100svh-0px)] w-full overflow-hidden">
-          <div className="flex h-full w-full flex-row transition-transform duration-700 ease-in-out will-change-transform" style={{ width: `${slides.length * 100}svw`, transform: `translate3d(-${idx * 100}svw, 0, 0)` }}>
+      <div className="relative z-20" style={{ minHeight: "calc(82svh - 0px)" }}>
+        <div className="relative w-full overflow-hidden" style={{ height: "calc(82svh - 0px)" }}>
+          <div
+            className="flex h-full w-full flex-row transition-transform duration-700 ease-in-out will-change-transform"
+            style={{ width: `${slides.length * 100}svw`, transform: `translate3d(-${idx * 100}svw, 0, 0)` }}
+          >
             {slides.map((s, i) => (
-              <div key={i} className="grid h-[100svh] w-[100svw] min-w-0 grid-cols-1 items-center gap-8 px-5 md:grid-cols-[1.05fr_1fr]" style={{ paddingTop: "6vh", paddingBottom: "8vh" }}>
-                {/* Sol: Görsel */}
-                <div className="order-2 flex justify-center md:order-1">
-                  <div className="relative w-full max-w-lg md:max-w-xl">
-                    <div className="relative aspect-[4/5] w-full">
-                      {s.img ? <Image src={s.img} alt={s.alt || "Görsel"} fill priority={i === 0} className="object-contain" /> : <div className="h-full w-full" />}
+              <div
+                key={i}
+                className="grid w-[100svw] min-w-0 grid-cols-1 items-center gap-8 px-5 md:grid-cols-[1.05fr_1fr]"
+                style={{ height: "82svh", paddingTop: "3vh", paddingBottom: "0" }}
+              >
+                {/* Sol: Görsel – DİBE SABİT */}
+                <div className="relative order-2 md:order-1 h-full">
+                  <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-xl md:max-w-2xl h-[56vh] md:h-[72vh]">
+                    <div className="relative w-full h-full">
+                      {s.img ? (
+                        <Image
+                          src={s.img}
+                          alt={s.alt || "Görsel"}
+                          fill
+                          priority={i === 0}
+                          className="object-contain object-bottom select-none"
+                        />
+                      ) : (
+                        <div className="h-full w-full" />
+                      )}
                     </div>
                   </div>
                 </div>
 
                 {/* Sağ: Metin + CTA */}
                 <div className="order-1 md:order-2 md:pr-6">
-                  <h1 className="text-white drop-shadow-sm font-extrabold leading-tight tracking-tight text-[clamp(28px,4.2vw,56px)]">
+                  <h1 className="text-white drop-shadow-sm font-extrabold leading-tight tracking-tight text-[clamp(26px,3.8vw,50px)]">
                     <span className="block">{s.titleTop}</span>
                     <span className="mt-1 block bg-gradient-to-r from-pink-200 via-fuchsia-100 to-purple-200 bg-clip-text text-transparent">{s.titleGradient}</span>
                   </h1>
@@ -335,7 +351,6 @@ export default function Hero() {
 
                   {s.ctaText && s.ctaHref && (
                     <div className="mt-7 relative" ref={i === idx ? burstHostRef : undefined}>
-                      {/* İç linkse Link, değilse <a> */}
                       {s.ctaHref.startsWith("/") ? (
                         <Link
                           href={s.ctaHref}
@@ -375,7 +390,12 @@ export default function Hero() {
             <div className="flex items-center gap-3">
               <div className="pointer-events-auto flex items-center gap-2">
                 {slides.map((_, j) => (
-                  <button key={j} onClick={() => setIdx(j)} className={`h-2.5 w-2.5 rounded-full transition ${j === idx ? "bg-white" : "bg-white/40"}`} aria-label={`Sayfa ${j + 1}`} />
+                  <button
+                    key={j}
+                    onClick={() => setIdx(j)}
+                    className={`h-2.5 w-2.5 rounded-full transition ${j === idx ? "bg-white" : "bg-white/40"}`}
+                    aria-label={`Sayfa ${j + 1}`}
+                  />
                 ))}
               </div>
               <span className="select-none text-sm text-white/80">{idx + 1} / {slides.length}</span>

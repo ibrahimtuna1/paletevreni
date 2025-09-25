@@ -38,7 +38,7 @@ export default function Page() {
               Videoları
             </span>
           </h1>
-          <p className="mt-3 max-w-2xl text-white/85">Sağa-sola kaydır; izlemek için dokun.</p>
+          <p className="mt-3 max-w-2xl text-white/85">İzlemek için dokunun.</p>
         </header>
 
         <TanitimCarousel videos={videos} />
