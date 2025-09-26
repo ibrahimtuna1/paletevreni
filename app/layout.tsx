@@ -1,5 +1,6 @@
 // app/layout.tsx
 import "./globals.css";
+import Script from "next/script";
 
 export const metadata = {
   title: "PaletEvreni – Online Resim Kursu",
@@ -13,6 +14,21 @@ export default function RootLayout({
 }) {
   return (
     <html lang="tr">
+      <head>
+        {/* Google tag (gtag.js) */}
+        <Script
+          async
+          src="https://www.googletagmanager.com/gtag/js?id=AW-786530047"
+        />
+        <Script id="gtag-init" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', 'AW-786530047');
+          `}
+        </Script>
+      </head>
       <body
         suppressHydrationWarning
         className="min-h-dvh bg-gradient-to-br from-[#0f1020] via-[#131a3a] to-[#201040] text-white antialiased font-sans font-medium tracking-tight"

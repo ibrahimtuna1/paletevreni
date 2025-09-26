@@ -3,7 +3,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { MouseEvent, useCallback, useEffect, useRef, useState } from "react";
+import { MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Palette = { top: string; bottom: string };
 
@@ -58,6 +58,24 @@ export default function Hero() {
   const current = slides[idx];
   const currentPalette = current.palette;
 
+  // ---- mobil algıla + reduced motion
+  const [isMobile, setIsMobile] = useState(false);
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)");
+    const rm = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setIsMobile(media.matches);
+    const updateRM = () => setReduced(rm.matches);
+    update();
+    updateRM();
+    media.addEventListener("change", update);
+    rm.addEventListener("change", updateRM);
+    return () => {
+      media.removeEventListener("change", update);
+      rm.removeEventListener("change", updateRM);
+    };
+  }, []);
+
   // ---- renk senkronu
   useEffect(() => {
     const root = document.documentElement;
@@ -97,20 +115,22 @@ export default function Hero() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  // ---- canvas (yıldız ağı + mouse)
+  // ---- canvas (yıldız ağı + mouse) — mobile optimize
   const canvasRef = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
+    if (reduced) return; // hareket kısıtlıysa tamamen kapat
     const canvas = canvasRef.current!;
     const ctx = canvas.getContext("2d")!;
     let raf = 0;
 
-    const MAX_POINTS = 110;
-    const LINK_RADIUS = 150;
-    const MOUSE_RADIUS = 130;
-    const BASE_SPEED = 0.35;
+    // mobile için daha hafif ayarlar
+    const MAX_POINTS = isMobile ? 45 : 110;
+    const LINK_RADIUS = isMobile ? 90 : 150;
+    const MOUSE_RADIUS = isMobile ? 0 : 130; // mobile'da etkileşim yok
+    const BASE_SPEED = isMobile ? 0.25 : 0.35;
     const MOUSE_FORCE = 0.65;
-    const LINE_ALPHA = 0.18;
-    const DOT_SIZE = 1.2;
+    const LINE_ALPHA = isMobile ? 0.10 : 0.18;
+    const DOT_SIZE = isMobile ? 1.0 : 1.2;
 
     const dpr = Math.max(1, window.devicePixelRatio || 1);
     const resize = () => {
@@ -135,6 +155,7 @@ export default function Hero() {
       vy: rnd(-BASE_SPEED, BASE_SPEED),
     }));
 
+    // mouse etkileşimi sadece desktop
     let mx = Infinity, my = Infinity;
     let mouseDown = false;
     let attractMode = false;
@@ -147,17 +168,13 @@ export default function Hero() {
     const onMouseDown = (e: MouseEvent) => { mouseDown = true; attractMode = e.shiftKey; };
     const onMouseUp = () => { mouseDown = false; };
     const onMouseLeave = () => { mx = my = Infinity; mouseDown = false; };
-    const onTouchMove = (e: TouchEvent) => { if (!e.touches[0]) return; const { x, y } = toCanvasCoords(e.touches[0]); mx = x; my = y; };
-    const onTouchStart = () => { mouseDown = true; attractMode = false; };
-    const onTouchEnd = () => { mouseDown = false; mx = my = Infinity; };
 
-    canvas.addEventListener("mousemove", onMouseMove as any);
-    canvas.addEventListener("mousedown", onMouseDown as any);
-    canvas.addEventListener("mouseup", onMouseUp as any);
-    canvas.addEventListener("mouseleave", onMouseLeave as any);
-    canvas.addEventListener("touchmove", onTouchMove, { passive: true });
-    canvas.addEventListener("touchstart", onTouchStart, { passive: true });
-    canvas.addEventListener("touchend", onTouchEnd, { passive: true });
+    if (!isMobile) {
+      canvas.addEventListener("mousemove", onMouseMove as any);
+      canvas.addEventListener("mousedown", onMouseDown as any);
+      canvas.addEventListener("mouseup", onMouseUp as any);
+      canvas.addEventListener("mouseleave", onMouseLeave as any);
+    }
 
     const cell = LINK_RADIUS;
     const hash = (x: number, y: number) => `${Math.floor(x / cell)},${Math.floor(y / cell)}`;
@@ -177,15 +194,17 @@ export default function Hero() {
         if (p.y < 0) { p.y = 0; p.vy *= -1; }
         if (p.y > h) { p.y = h; p.vy *= -1; }
 
-        const dxm = p.x - mx, dym = p.y - my;
-        const d2m = dxm * dxm + dym * dym;
-        if (d2m < MOUSE_RADIUS * MOUSE_RADIUS) {
-          const d = Math.max(Math.sqrt(d2m), 0.001);
-          const dirx = dxm / d, diry = dym / d;
-          const sgn = attractMode ? -1 : 1;
-          const f = sgn * (1 - d / MOUSE_RADIUS) * MOUSE_FORCE * (mouseDown ? 1 : 0.5);
-          p.vx += dirx * f;
-          p.vy += diry * f;
+        if (!isMobile && MOUSE_RADIUS > 0) {
+          const dxm = p.x - mx, dym = p.y - my;
+          const d2m = dxm * dxm + dym * dym;
+          if (d2m < MOUSE_RADIUS * MOUSE_RADIUS) {
+            const d = Math.max(Math.sqrt(d2m), 0.001);
+            const dirx = dxm / d, diry = dym / d;
+            const sgn = attractMode ? -1 : 1;
+            const f = sgn * (1 - d / MOUSE_RADIUS) * MOUSE_FORCE * (mouseDown ? 1 : 0.5);
+            p.vx += dirx * f;
+            p.vy += diry * f;
+          }
         }
 
         const k = hash(p.x, p.y);
@@ -212,7 +231,7 @@ export default function Hero() {
             const d2 = dx * dx + dy * dy;
             const max = LINK_RADIUS * LINK_RADIUS;
             if (d2 < max) {
-              const alpha = 0.18 * (1 - d2 / max);
+              const alpha = LINE_ALPHA * (1 - d2 / max);
               ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
               ctx.lineWidth = 1;
               ctx.beginPath();
@@ -231,15 +250,14 @@ export default function Hero() {
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", resize);
-      canvas.removeEventListener("mousemove", onMouseMove as any);
-      canvas.removeEventListener("mousedown", onMouseDown as any);
-      canvas.removeEventListener("mouseup", onMouseUp as any);
-      canvas.removeEventListener("mouseleave", onMouseLeave as any);
-      canvas.removeEventListener("touchmove", onTouchMove);
-      canvas.removeEventListener("touchstart", onTouchStart);
-      canvas.removeEventListener("touchend", onTouchEnd);
+      if (!isMobile) {
+        canvas.removeEventListener("mousemove", onMouseMove as any);
+        canvas.removeEventListener("mousedown", onMouseDown as any);
+        canvas.removeEventListener("mouseup", onMouseUp as any);
+        canvas.removeEventListener("mouseleave", onMouseLeave as any);
+      }
     };
-  }, []);
+  }, [isMobile, reduced]);
 
   const next = () => setIdx((i) => (i + 1) % slides.length);
   const prev = () => setIdx((i) => (i - 1 + slides.length) % slides.length);
@@ -274,35 +292,85 @@ export default function Hero() {
         }}
       />
       <div className="pointer-events-none fixed inset-0 -z-20 bg-[radial-gradient(circle_at_center,transparent_0,transparent_55%,rgba(0,0,0,0.35)_100%)]" />
-      <canvas ref={canvasRef} className="absolute inset-0 z-10" style={{ cursor: "none" }} />
+      {/* canvas — mobile'da pointer'ı kapat */}
+      <canvas
+        ref={canvasRef}
+        className="absolute inset-0 z-10"
+        style={{ pointerEvents: "none" }}
+      />
 
       {/* Header */}
       <header
         data-hidden={hidden ? "true" : "false"}
         data-attop={atTop ? "true" : "false"}
-        className={["fixed inset-x-0 top-0 z-40 transition-transform duration-300", hidden ? "-translate-y-full" : ""].join(" ")}
+        className={[
+          "fixed inset-x-0 top-0 z-50 transition-transform duration-300", // z-50 (yükseltildi)
+          hidden ? "-translate-y-full" : "",
+        ].join(" ")}
       >
         <div
           className="pointer-events-none absolute inset-0 -z-10 backdrop-saturate-150"
           style={{
             WebkitBackdropFilter: atTop ? "blur(4px)" : "blur(8px)",
             backdropFilter: atTop ? "blur(4px)" : "blur(8px)",
-            WebkitMaskImage: "linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.6) 60%, rgba(0,0,0,0) 100%)",
-            maskImage: "linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.6) 60%, rgba(0,0,0,0) 100%)",
+            WebkitMaskImage:
+              "linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.6) 60%, rgba(0,0,0,0) 100%)",
+            maskImage:
+              "linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.6) 60%, rgba(0,0,0,0) 100%)",
           }}
         />
-        <div className="relative flex h-16 md:h-[92px] w-full items-center px-0 pr-2 sm:pr-4 lg:pr-8">
-          <Link href="/" onClick={handleLogoClick} aria-label="Palet Evreni - en üste git" className="inline-flex items-center select-none shrink-0">
-            <Image src="/images/logo.png" alt="Palet Evreni" width={300} height={120} priority sizes="(min-width:1024px) 300px, (min-width:768px) 240px, 180px" className="h-12 w-auto md:h-[84px] origin-left scale-110 md:scale-[1.25] drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]" draggable={false} />
+        <div className="relative flex h-16 md:h-[92px] w-full items-center px-3 sm:px-4 lg:pr-8">
+          <Link
+            href="/"
+            onClick={handleLogoClick}
+            aria-label="Palet Evreni - en üste git"
+            className="inline-flex items-center select-none shrink-0"
+          >
+            <Image
+              src="/images/logo.png"
+              alt="Palet Evreni"
+              width={300}
+              height={120}
+              priority
+              sizes="(min-width:1024px) 300px, (min-width:768px) 240px, 180px"
+              className="h-10 w-auto md:h-[84px] origin-left md:scale-[1.25] drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]"
+              draggable={false}
+            />
           </Link>
 
-          {/* NAV */}
+          {/* NAV desktop */}
           <nav className="ml-auto hidden md:flex items-center gap-3 text-sm">
-            <a href="/#programlar" className="btn-gpill from-emerald-500 via-emerald-600 to-emerald-500">Paketlerimiz</a>
-            <a href="/tanitim-videolari" className="btn-gpill from-cyan-500 via-blue-500 to-cyan-500">Tanıtım Videoları</a>
-            <a href="/hakkimizda" className="btn-gpill from-pink-500 via-violet-500 to-pink-500">Hakkımızda</a>
-            <a href="#iletisim" className="btn-gpill from-amber-500 via-rose-500 to-amber-500">İletişim</a>
+            <a href="/#programlar" className="btn-gpill from-emerald-500 via-emerald-600 to-emerald-500">
+              Paketlerimiz
+            </a>
+            <a href="/tanitim-videolari" className="btn-gpill from-cyan-500 via-blue-500 to-cyan-500">
+              Tanıtım Videoları
+            </a>
+            <a href="/hakkimizda" className="btn-gpill from-pink-500 via-violet-500 to-pink-500">
+              Hakkımızda
+            </a>
+            <a href="#iletisim" className="btn-gpill from-amber-500 via-rose-500 to-amber-500">
+              İletişim
+            </a>
           </nav>
+        </div>
+
+        {/* NAV mobile — yatay kaydırılabilir kısa şerit */}
+        <div className="md:hidden overflow-x-auto no-scrollbar px-3 pb-2 pt-1">
+          <div className="flex gap-2 w-max">
+            <a href="/#programlar" className="btn-gpill from-emerald-500 via-emerald-600 to-emerald-500">
+              Paketlerimiz
+            </a>
+            <a href="/tanitim-videolari" className="btn-gpill from-cyan-500 via-blue-500 to-cyan-500">
+              Videolar
+            </a>
+            <a href="/hakkimizda" className="btn-gpill from-pink-500 via-violet-500 to-pink-500">
+              Hakkımızda
+            </a>
+            <a href="#iletisim" className="btn-gpill from-amber-500 via-rose-500 to-amber-500">
+              İletişim
+            </a>
+          </div>
         </div>
       </header>
 
@@ -318,13 +386,13 @@ export default function Hero() {
             {slides.map((s, i) => (
               <div
                 key={i}
-                className="grid w-[100svw] min-w-0 grid-cols-1 items-center gap-8 px-5 md:grid-cols-[1.05fr_1fr]"
+                className="grid w-[100svw] min-w-0 grid-cols-1 items-center gap-6 px-5 md:grid-cols-[1.05fr_1fr]"
                 style={{ height: "82svh", paddingTop: "3vh", paddingBottom: "0" }}
               >
-                {/* Sol: Görsel – DİBE SABİT */}
-                <div className="relative order-2 md:order-1 h-full">
-                  <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-xl md:max-w-2xl h-[56vh] md:h-[72vh]">
-                    <div className="relative w-full h-full">
+                {/* Sol: Görsel – dibe sabit (mobile'da pointer kapalı + z-index düşük) */}
+                <div className="relative order-2 md:order-1 h-full z-20">
+                  <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-xl md:max-w-2xl h-[48vh] md:h-[72vh] pointer-events-none">
+                    <div className="relative w-full h-full z-20">
                       {s.img ? (
                         <Image
                           src={s.img}
@@ -340,24 +408,33 @@ export default function Hero() {
                   </div>
                 </div>
 
-                {/* Sağ: Metin + CTA */}
-                <div className="order-1 md:order-2 md:pr-6">
+                {/* Sağ: Metin + CTA — CTA üstte kalır */}
+                <div className="order-1 md:order-2 md:pr-6 z-40">
                   <h1 className="text-white drop-shadow-sm font-extrabold leading-tight tracking-tight text-[clamp(26px,3.8vw,50px)]">
                     <span className="block">{s.titleTop}</span>
-                    <span className="mt-1 block bg-gradient-to-r from-pink-200 via-fuchsia-100 to-purple-200 bg-clip-text text-transparent">{s.titleGradient}</span>
+                    <span className="mt-1 block bg-gradient-to-r from-pink-200 via-fuchsia-100 to-purple-200 bg-clip-text text-transparent">
+                      {s.titleGradient}
+                    </span>
                   </h1>
 
-                  {s.desc && <p className="mt-4 max-w-xl text-white/85 text-[clamp(14px,1.6vw,18px)]">{s.desc}</p>}
+                  {s.desc && (
+                    <p className="mt-4 max-w-xl text-white/85 text-[clamp(14px,1.6vw,18px)]">
+                      {s.desc}
+                    </p>
+                  )}
 
                   {s.ctaText && s.ctaHref && (
-                    <div className="mt-7 relative" ref={i === idx ? burstHostRef : undefined}>
+                    <div className="mt-6 relative" ref={i === idx ? burstHostRef : undefined}>
                       {s.ctaHref.startsWith("/") ? (
                         <Link
                           href={s.ctaHref}
-                          onMouseEnter={i === idx ? starBurst : undefined}
-                          onFocus={i === idx ? starBurst : undefined}
-                          className="relative inline-flex items-center justify-center rounded-full px-9 py-4 text-lg font-semibold text-white shadow-xl transition hover:-translate-y-0.5 focus:outline-none"
-                          style={{ background: "linear-gradient(90deg, #ff4fb8, #ff7bd1, #ffa4e0)", boxShadow: "0 20px 40px rgba(255, 100, 180, 0.25)" }}
+                          onMouseEnter={!isMobile && i === idx ? starBurst : undefined}
+                          onFocus={!isMobile && i === idx ? starBurst : undefined}
+                          className="relative inline-flex items-center justify-center rounded-full px-7 py-3 md:px-9 md:py-4 text-base md:text-lg font-semibold text-white shadow-xl transition hover:-translate-y-0.5 focus:outline-none"
+                          style={{
+                            background: "linear-gradient(90deg, #ff4fb8, #ff7bd1, #ffa4e0)",
+                            boxShadow: "0 20px 40px rgba(255, 100, 180, 0.25)",
+                          }}
                         >
                           <span className="absolute inset-0 overflow-hidden rounded-full pointer-events-none">
                             <span className="shine absolute -inset-1 translate-x-[-120%] blur-[6px]" />
@@ -367,10 +444,13 @@ export default function Hero() {
                       ) : (
                         <a
                           href={s.ctaHref}
-                          onMouseEnter={i === idx ? starBurst : undefined}
-                          onFocus={i === idx ? starBurst : undefined}
-                          className="relative inline-flex items-center justify-center rounded-full px-9 py-4 text-lg font-semibold text-white shadow-xl transition hover:-translate-y-0.5 focus:outline-none"
-                          style={{ background: "linear-gradient(90deg, #ff4fb8, #ff7bd1, #ffa4e0)", boxShadow: "0 20px 40px rgba(255, 100, 180, 0.25)" }}
+                          onMouseEnter={!isMobile && i === idx ? starBurst : undefined}
+                          onFocus={!isMobile && i === idx ? starBurst : undefined}
+                          className="relative inline-flex items-center justify-center rounded-full px-7 py-3 md:px-9 md:py-4 text-base md:text-lg font-semibold text-white shadow-xl transition hover:-translate-y-0.5 focus:outline-none"
+                          style={{
+                            background: "linear-gradient(90deg, #ff4fb8, #ff7bd1, #ffa4e0)",
+                            boxShadow: "0 20px 40px rgba(255, 100, 180, 0.25)",
+                          }}
                         >
                           <span className="absolute inset-0 overflow-hidden rounded-full pointer-events-none">
                             <span className="shine absolute -inset-1 translate-x-[-120%] blur-[6px]" />
@@ -398,19 +478,61 @@ export default function Hero() {
                   />
                 ))}
               </div>
-              <span className="select-none text-sm text-white/80">{idx + 1} / {slides.length}</span>
+              <span className="select-none text-sm text-white/80">
+                {idx + 1} / {slides.length}
+              </span>
             </div>
           </div>
 
           {/* Oklar */}
-          <button aria-label="Önceki" onClick={prev} className="absolute left-3 top-1/2 z-30 -translate-y-1/2 inline-flex rounded-full bg-white/20 p-3 text-white backdrop-blur transition hover:bg-white/30 min-h-[44px] min-w-[44px]">‹</button>
-          <button aria-label="Sonraki" onClick={next} className="absolute right-3 top-1/2 z-30 -translate-y-1/2 inline-flex rounded-full bg-white/20 p-3 text-white backdrop-blur transition hover:bg-white/30 min-h-[44px] min-w-[44px]">›</button>
+          <button
+            aria-label="Önceki"
+            onClick={prev}
+            className="absolute left-3 top-1/2 z-30 -translate-y-1/2 inline-flex rounded-full bg-white/20 p-3 text-white backdrop-blur transition hover:bg-white/30 min-h-[44px] min-w-[44px]"
+          >
+            ‹
+          </button>
+          <button
+            aria-label="Sonraki"
+            onClick={next}
+            className="absolute right-3 top-1/2 z-30 -translate-y-1/2 inline-flex rounded-full bg-white/20 p-3 text-white backdrop-blur transition hover:bg-white/30 min-h-[44px] min-w-[44px]"
+          >
+            ›
+          </button>
         </div>
       </div>
 
       <style jsx>{`
-        .btn-gpill { --gp: linear-gradient(90deg, var(--tw-gradient-from), var(--tw-gradient-via), var(--tw-gradient-to)); position: relative; display: inline-flex; align-items: center; padding: 0.375rem 1rem; border-radius: 9999px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; color: #fff; background-image: var(--gp); background-size: 200% 200%; box-shadow: 0 6px 18px rgba(0,0,0,.12); transition: transform 180ms ease, box-shadow 180ms ease, filter 180ms ease, background-position 500ms ease; overflow: hidden; isolation: isolate; }
-        .btn-gpill::after { content:""; position:absolute; inset:-150% -40%; background: radial-gradient(60% 60% at 50% 50%, rgba(255,255,255,.45), rgba(255,255,255,0) 60%); transform: translateX(-60%); opacity:0; transition:opacity 200ms ease, transform 600ms ease; pointer-events:none; z-index:-1; }
+        .btn-gpill {
+          --gp: linear-gradient(90deg, var(--tw-gradient-from), var(--tw-gradient-via), var(--tw-gradient-to));
+          position: relative;
+          display: inline-flex;
+          align-items: center;
+          padding: 0.375rem 1rem;
+          border-radius: 9999px;
+          font-weight: 700;
+          letter-spacing: .02em;
+          text-transform: uppercase;
+          color: #fff;
+          background-image: var(--gp);
+          background-size: 200% 200%;
+          box-shadow: 0 6px 18px rgba(0,0,0,.12);
+          transition: transform 180ms ease, box-shadow 180ms ease, filter 180ms ease, background-position 500ms ease;
+          overflow: hidden;
+          isolation: isolate;
+          white-space: nowrap;
+        }
+        .btn-gpill::after {
+          content:"";
+          position:absolute;
+          inset:-150% -40%;
+          background: radial-gradient(60% 60% at 50% 50%, rgba(255,255,255,.45), rgba(255,255,255,0) 60%);
+          transform: translateX(-60%);
+          opacity:0;
+          transition:opacity 200ms ease, transform 600ms ease;
+          pointer-events:none;
+          z-index:-1;
+        }
         .btn-gpill:hover { transform: translateY(-1px); filter: saturate(1.1); background-position: 100% 0%; box-shadow: 0 10px 28px rgba(0,0,0,.18); }
         .btn-gpill:hover::after { opacity:1; transform: translateX(60%); }
         .btn-gpill:active { transform: translateY(0) scale(.99); box-shadow: 0 6px 18px rgba(0,0,0,.14); }
@@ -420,6 +542,9 @@ export default function Hero() {
         .spark { position:absolute; left:50%; top:50%; width:4px; height:4px; border-radius:9999px; background:white; box-shadow:0 0 10px rgba(255,255,255,.8), 0 0 2px rgba(255,255,255,1) inset; transform: translate(-50%, -50%); animation: spark-move 700ms ease-out forwards, spark-fade 700ms ease-out forwards; animation-delay: var(--delay, 0ms); pointer-events:none; z-index:5; }
         @keyframes spark-move { to { transform: translate(calc(-50% + var(--dx)*1px), calc(-50% + var(--dy)*1px)) scale(.8); } }
         @keyframes spark-fade { 0%{opacity:1} 80%{opacity:.8} 100%{opacity:0} }
+        /* scroll bar gizle (opsiyonel) */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
     </section>
   );
