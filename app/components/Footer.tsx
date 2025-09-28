@@ -40,7 +40,7 @@ export default function Footer() {
               <li><Link href="/atolye" className="hover:text-white">Eğitim Modelimiz (Atölye)</Link></li>
               <li><Link href="/#programlar" className="hover:text-white">Paketlerimiz</Link></li>
               <li><Link href="/tanitim-videolari" className="hover:text-white">Tanıtım Videolarımız</Link></li>
-              <li><Link href="/galeri" className="hover:text-white">Galerimiz</Link></li>
+              <li><Link href="/galerimiz" className="hover:text-white">Galerimiz</Link></li>
             </ul>
           </div>
 
