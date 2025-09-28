@@ -45,9 +45,9 @@ export default function Hero() {
     {
       img: "/images/hero-figure3.png",
       alt: "Paketlerimiz",
-      titleTop: "Esnek",
+      titleTop: "Uygun fiyatlı",
       titleGradient: "Paketlerimiz",
-      desc: "Çocuğunuzun ihtiyacına uygun esnek paket seçenekleri.",
+      desc: "Çocuğunuzun ihtiyacına uygun paket seçenekleri.",
       ctaText: "Paketlerimiz",
       ctaHref: "/#programlar",
       palette: { top: "#1a0f00", bottom: "#cc5a00" },
@@ -343,13 +343,19 @@ export default function Hero() {
             <a href="/#programlar" className="btn-gpill from-emerald-500 via-emerald-600 to-emerald-500">
               Paketlerimiz
             </a>
-            <a href="/tanitim-videolari" className="btn-gpill from-cyan-500 via-blue-500 to-cyan-500">
-              Tanıtım Videoları
+            {/* CHANGED: Videolar -> Galerimiz, href -> /route/galerimiz */}
+            <a href="/galerimiz" className="btn-gpill from-cyan-500 via-blue-500 to-cyan-500">
+              Galerimiz
             </a>
             <a href="/hakkimizda" className="btn-gpill from-pink-500 via-violet-500 to-pink-500">
               Hakkımızda
             </a>
-            <a href="#iletisim" className="btn-gpill from-amber-500 via-rose-500 to-amber-500">
+            {/* CHANGED: #iletisim -> tel:+905015303949 */}
+            <a
+              href="tel:+905015303949"
+              className="btn-gpill from-amber-500 via-rose-500 to-amber-500"
+              aria-label="0501 530 39 49 numarasını ara"
+            >
               İletişim
             </a>
           </nav>
@@ -361,13 +367,19 @@ export default function Hero() {
             <a href="/#programlar" className="btn-gpill from-emerald-500 via-emerald-600 to-emerald-500">
               Paketlerimiz
             </a>
-            <a href="/tanitim-videolari" className="btn-gpill from-cyan-500 via-blue-500 to-cyan-500">
-              Videolar
+            {/* CHANGED: Videolar -> Galerimiz, href -> /route/galerimiz */}
+            <a href="/route/galerimiz" className="btn-gpill from-cyan-500 via-blue-500 to-cyan-500">
+              Galerimiz
             </a>
             <a href="/hakkimizda" className="btn-gpill from-pink-500 via-violet-500 to-pink-500">
               Hakkımızda
             </a>
-            <a href="#iletisim" className="btn-gpill from-amber-500 via-rose-500 to-amber-500">
+            {/* CHANGED: #iletisim -> tel:+905015303949 */}
+            <a
+              href="tel:+905015303949"
+              className="btn-gpill from-amber-500 via-rose-500 to-amber-500"
+              aria-label="0501 530 39 49 numarasını ara"
+            >
               İletişim
             </a>
           </div>

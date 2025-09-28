@@ -3,15 +3,14 @@
 
 import Link from "next/link";
 import Image from "next/image";
+import Footer from "@/components/Footer";
 
 export default function HakkimizdaPage() {
   return (
     <>
       <AboutHero />
 
-      {/* PASTEL ANİMASYONLU ARKA PLANLI YÜZEY */}
       <section className="relative overflow-hidden bg-[#FCF8FF]">
-        {/* yumuşak hareket eden blob’lar */}
         <div className="pointer-events-none absolute inset-0 -z-10">
           <span
             className="blob animate-drift1"
@@ -49,9 +48,7 @@ export default function HakkimizdaPage() {
           />
         </div>
 
-        {/* İçerik */}
         <main className="relative mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 text-slate-800">
-          {/* Sanat neden önemli? */}
           <section id="neden-sanat" className="mb-14 scroll-mt-24">
             <h2 className="text-2xl md:text-3xl font-extrabold">
               <span className="bg-gradient-to-r from-fuchsia-600 via-pink-600 to-violet-600 bg-clip-text text-transparent">
@@ -62,24 +59,23 @@ export default function HakkimizdaPage() {
             <div className="mt-6 grid gap-4 sm:grid-cols-2">
               <Card
                 title="Özgüven & İfade"
-                text="Resim yaparken çocuklar duygularını güvenli bir alanda ifade eder; üretim süreci özgüveni besler."
+                text="Üretirken duygularını güvenli bir alanda ifade ederler; süreç özgüveni besler."
               />
               <Card
                 title="Odaklanma & Sabır"
-                text="Aşamaları takip etmek, detaya dikkat ve bitirme disiplini gelişir."
+                text="Aşamaları takip, detaya dikkat ve bitirme disiplini gelişir."
               />
               <Card
                 title="Yaratıcılık & Problem Çözme"
-                text="Renk, kompozisyon, doku gibi kararlar çocukların yaratıcı düşünmesini güçlendirir."
+                text="Renk, kompozisyon ve doku kararları yaratıcı düşünmeyi güçlendirir."
               />
               <Card
                 title="Portfolyo & Gelecek"
-                text="Hedef okullara uygun, düzenli ve gelişim gösteren bir portfolyo oluşturulur."
+                text="Hedef okullara uygun, düzenli ve gelişimi gösteren bir portfolyo oluşur."
               />
             </div>
           </section>
 
-          {/* Yöntemimiz */}
           <section id="yontem" className="mb-14 scroll-mt-24">
             <h2 className="text-2xl md:text-3xl font-extrabold">
               <span className="bg-gradient-to-r from-violet-600 to-fuchsia-600 bg-clip-text text-transparent">
@@ -87,14 +83,13 @@ export default function HakkimizdaPage() {
               </span>
             </h2>
             <ul className="mt-4 grid gap-3 text-slate-700">
-              <li>• Haftalık canlı atölye dersleri (soru–cevap, birebir yönlendirme).</li>
-              <li>• Ödev geri bildirimi: kuvvetli yönler + geliştirilecek alanlar.</li>
-              <li>• Portfolyo koçluğu: konu seçimi, ilerleme planı, düzen.</li>
-              <li>• Topluluk: paylaşımlar, mini etkinlikler, motivasyon döngüsü.</li>
+              <li>• Canlı, online atölye dersleri: anlık geri bildirim ve birebir yönlendirme.</li>
+              <li>• Ödev yükleme ve değerlendirme: güçlü yönler + net geliştirme önerileri.</li>
+              <li>• Portfolyo koçluğu: konu seçimi, ilerleme planı, düzen ve sunum.</li>
+              <li>• Toplulukta paylaşım, mini etkinlikler ve sürdürülebilir motivasyon.</li>
             </ul>
           </section>
 
-          {/* Eğitmen yaklaşımı */}
           <section id="egitmen" className="mb-6 scroll-mt-24">
             <h2 className="text-2xl md:text-3xl font-extrabold">
               <span className="bg-gradient-to-r from-fuchsia-600 via-pink-600 to-violet-600 bg-clip-text text-transparent">
@@ -102,16 +97,12 @@ export default function HakkimizdaPage() {
               </span>
             </h2>
             <p className="mt-4 max-w-3xl">
-              Eğitmenlerimiz, her çocuğun eşsiz bir sanat dili olduğuna inanır. Yaşa ve
-              seviyeye göre kişiselleştirilmiş yönlendirme yapar; eleştiride kırıcı
-              değil, geliştiricidir. Hedefimiz, “çocuğun kendi stilini bulmasıdır”.
+              Her öğrencinin kendine özgü bir sanat dili olduğuna inanıyoruz. Yaş ve seviyeye göre kişiselleştirilmiş,
+              motive edici ve net geri bildirimler veriyoruz. Hedefimiz, öğrencinin kendi stilini güvenle geliştirmesi.
             </p>
           </section>
-
-          {/* SSS kutusu ve alt CTA kaldırıldı */}
         </main>
 
-        {/* styled-jsx: blob animasyonları */}
         <style jsx global>{`
           .blob { position: absolute; border-radius: 50%; filter: blur(24px); }
           @keyframes drift1 { 0% { transform: translate(0,0) scale(1); } 50% { transform: translate(30px,-20px) scale(1.06); } 100% { transform: translate(0,0) scale(1); } }
@@ -122,15 +113,15 @@ export default function HakkimizdaPage() {
           .animate-drift3 { animation: drift3 26s ease-in-out infinite; }
         `}</style>
       </section>
+
+      <Footer />
     </>
   );
 }
 
-/* === HERO (Hakkımızda) === */
 function AboutHero() {
   return (
     <section className="relative overflow-hidden">
-      {/* Arka plan */}
       <div
         className="absolute inset-0 -z-10"
         style={{ background: "linear-gradient(180deg, #041418 0%, #cb6ce6 100%)" }}
@@ -141,21 +132,21 @@ function AboutHero() {
         <div className="max-w-xl">
           <p className="text-sm font-semibold uppercase tracking-wider text-white/70">Palet Evreni</p>
           <h1 className="mt-2 text-3xl sm:text-4xl font-extrabold leading-tight">
-            Çocuklarla Sanatın{" "}
+            Canlı Online{" "}
             <span className="bg-gradient-to-r from-pink-200 via-fuchsia-100 to-purple-200 bg-clip-text text-transparent">
-              en eğlenceli hâli
+              Sanat Eğitimi
             </span>
           </h1>
           <p className="mt-4 text-white/90">
-            Çocuklarınızın hayal gücünü oyunla buluşturuyoruz. Canlı atölyeler,
-            kişisel geri bildirimler ve portfolyo koçluğuyla her çocuk kendi stilini keşfeder.
+            Çocuklar hayal gücünü gerçek zamanlı derslerle büyütür. Canlı bağlantıda eğitmenlerimiz yönlendirir,
+            anında geri bildirim verir, çalışmalar birlikte gelişir.
           </p>
           <ul className="mt-6 space-y-2 text-white/95">
             {[
-              "Haftalık canlı atölye dersleri",
-              "Ödev yükleme ve kişisel geri bildirim",
-              "Renk, kompozisyon, dijital boyama",
-              "Portfolyo koçluğu ve ilerleme takibi",
+              "Canlı, online dersler — interaktif ve küçük gruplar",
+              "Anlık geri bildirim ve birebir yönlendirme",
+              "Ödev yükleme, düzenli takip ve net hedefler",
+              "Portfolyo koçluğu: seçim, süreç, sunum",
             ].map((t) => (
               <li key={t} className="flex items-start gap-3">
                 <span className="mt-1 inline-block h-2.5 w-2.5 rounded-full bg-fuchsia-300 ring-4 ring-fuchsia-200/30" />
@@ -175,7 +166,7 @@ function AboutHero() {
               Ücretsiz Tanıtım Dersi
             </Link>
             <Link
-              href="/#paketler"
+              href="/#programlar"
               className="rounded-full px-6 py-3 font-semibold bg-white/10 hover:bg-white/20 transition"
             >
               Paketlerimizi Gör
@@ -196,7 +187,6 @@ function AboutHero() {
         </div>
       </div>
 
-      {/* Wave ayırıcı */}
       <svg className="block h-12 w-full text-[#FCF8FF]" preserveAspectRatio="none" viewBox="0 0 1200 100">
         <path d="M0,0 C150,80 350,80 600,20 C850,-40 1050,40 1200,0 L1200,100 L0,100 Z" fill="currentColor" />
       </svg>
