@@ -13,15 +13,64 @@ type Item = {
   date_id?: string | null; // DB'de boş olabilir
   status: "pending" | "approved" | "rejected";
   created_at: string;
+
+  heard_from?: string | null;
+  heard_from_other?: string | null;
 };
 
 type Filter = "all" | "pending" | "approved" | "rejected";
 
+/* ----------------- Telefon helper'ları (TR) ----------------- */
+// Normalize: 10 haneli 5XXXXXXXXX
+function normalizeTR(msisdn: string): string | null {
+  const digits = (msisdn || "").replace(/\D/g, "");
+  let d = digits;
+  if (d.startsWith("90") && d.length === 12) d = d.slice(2);
+  if (d.startsWith("0") && d.length === 11) d = d.slice(1);
+  d = d.slice(-10);
+  return d.length === 10 && d.startsWith("5") ? d : null;
+}
+// UI'de her zaman 0'lı göster (05XXXXXXXXX)
+function displayTR(msisdn: string): string | null {
+  const n = normalizeTR(msisdn);
+  return n ? `0${n}` : null;
+}
+// tel: link için E.164 (+905XXXXXXXXX)
+function telHrefTR(msisdn: string): string | null {
+  const n = normalizeTR(msisdn);
+  return n ? `+90${n}` : null;
+}
+
+/* ----------------- Kaynak (heard_from) helper'ları ----------------- */
+const HEARD_LABELS: Record<string, string> = {
+  instagram: "Instagram",
+  google: "Google",
+  arkadas: "Arkadaş",
+  arkadaştan: "Arkadaş",
+  afis: "Afiş",
+  afiş: "Afiş",
+  reklam: "Reklam",
+  okul: "Okul",
+  whatsapp: "WhatsApp",
+  youtube: "YouTube",
+  diger: "Diğer",
+  other: "Diğer",
+};
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+function heardLabel(i: Item): string {
+  const code = (i.heard_from || "").trim().toLowerCase();
+  if (!code) return "—";
+  const base = HEARD_LABELS[code] ?? cap(code);
+  if (code === "diger" || code === "other") {
+    const extra = (i.heard_from_other || "").trim();
+    return extra ? `${base}: ${extra}` : base;
+  }
+  return base;
+}
+
 /* ----------------- Sayfa ----------------- */
 export default function ApplicationsPage() {
-  // Başvurular API
   const api = useAdminApi("/api/admin/applications");
-  // Tanıtım dersi (approve) API
   const approveApi = useAdminApi("/api/admin/trials/approve");
 
   const [items, setItems] = useState<Item[]>([]);
@@ -29,10 +78,9 @@ export default function ApplicationsPage() {
   const [filter, setFilter] = useState<Filter>("all");
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  // Onay modal state
   const [approveOpen, setApproveOpen] = useState(false);
   const [approveId, setApproveId] = useState<string | null>(null);
-  const [approveWhen, setApproveWhen] = useState<string>(""); // datetime-local
+  const [approveWhen, setApproveWhen] = useState<string>("");
 
   async function load() {
     const res = await api.get();
@@ -45,13 +93,23 @@ export default function ApplicationsPage() {
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
+    const termDigits = term.replace(/\D/g, "");
     return items
       .filter((i) => (filter === "all" ? true : i.status === filter))
-      .filter((i) =>
-        term
-          ? `${i.student_name} ${i.parent_name} ${i.parent_phone}`.toLowerCase().includes(term)
-          : true
-      );
+      .filter((i) => {
+        if (!term) return true;
+        const dispPhone = displayTR(i.parent_phone) || i.parent_phone;
+        const sourceText = `${i.heard_from || ""} ${i.heard_from_other || ""}`.toLowerCase();
+        const hayText = `${i.student_name} ${i.parent_name} ${dispPhone} ${sourceText}`.toLowerCase();
+        if (hayText.includes(term)) return true;
+
+        const phoneNorm = normalizeTR(i.parent_phone) || "";
+        if (termDigits.length >= 3) {
+          const variants = [phoneNorm, `0${phoneNorm}`, `90${phoneNorm}`, `+90${phoneNorm}`];
+          if (variants.some((v) => v.includes(termDigits))) return true;
+        }
+        return false;
+      });
   }, [items, search, filter]);
 
   const stats = useMemo(
@@ -66,11 +124,10 @@ export default function ApplicationsPage() {
 
   async function setStatus(id: string, status: Item["status"]) {
     setBusyId(id);
-    // optimistic
     setItems((xs) => xs.map((x) => (x.id === id ? { ...x, status } : x)));
     const res = await api.patch("update", { id, status });
     setBusyId(null);
-    if (!res) load(); // rollback
+    if (!res) load();
   }
 
   async function remove(id: string) {
@@ -85,7 +142,6 @@ export default function ApplicationsPage() {
 
   function openApproveModal(i: Item) {
     setApproveId(i.id);
-    // default: bugünün 20:00'ı (yerel)
     const d = new Date();
     d.setHours(20, 0, 0, 0);
     setApproveWhen(toLocalDatetimeInputValue(d));
@@ -93,29 +149,43 @@ export default function ApplicationsPage() {
   }
 
   async function confirmApprove() {
-    if (!approveId || !approveWhen) return;
-    setBusyId(approveId);
+  if (!approveId || !approveWhen) return;
+  setBusyId(approveId);
 
-    // datetime-local -> ISO (kullanıcı TZ’si ile)
-    const iso = new Date(approveWhen).toISOString();
+  const res = await fetch("/api/admin/trials/approve", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      applicationId: approveId,
+      scheduledAt: new Date(approveWhen).toISOString(),
+    }),
+  });
 
-    const res = await approveApi.post({
-       applicationId: approveId as string,
-       scheduledAt: iso,
-     });
-    setBusyId(null);
-    setApproveOpen(false);
-    setApproveId(null);
+  setBusyId(null);
+  setApproveOpen(false);
+  setApproveId(null);
 
-    if (!res?.ok) {
-      alert(res?.error || "Onay sırasında hata oluştu.");
-      await load();
-      return;
-    }
-
-    // UI: başvuruyu "approved" işaretle
-    setItems((xs) => xs.map((x) => (x.id === (approveId as string) ? { ...x, status: "approved" } : x)));
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok || !j?.ok) {
+    alert(j?.error || "Onay sırasında hata oluştu.");
+    await load();
+    return;
   }
+  setItems((xs) => xs.map((x) => (x.id === approveId ? { ...x, status: "approved" } : x)));
+}
+
+
+  const headers = [
+    "Tarih",
+    "Öğrenci",
+    "Veli",
+    "Telefon",
+    "Kaynak",
+    "Yaş",
+    "Gün (opsiyonel)",
+    "Durum",
+    "",
+  ];
 
   return (
     <div className="space-y-7">
@@ -146,7 +216,7 @@ export default function ApplicationsPage() {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Öğrenci, veli adı veya telefon ara..."
+          placeholder="Öğrenci, veli adı, telefon veya kaynak ara..."
           className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-black focus:ring-black/20 sm:max-w-md"
         />
         <div className="flex gap-2">
@@ -162,21 +232,19 @@ export default function ApplicationsPage() {
         <table className="min-w-full text-sm">
           <thead className="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-600">
             <tr>
-              <th className="px-4 py-3">Tarih</th>
-              <th className="px-4 py-3">Öğrenci</th>
-              <th className="px-4 py-3">Veli</th>
-              <th className="px-4 py-3">Telefon</th>
-              <th className="px-4 py-3">Yaş</th>
-              <th className="px-4 py-3">Gün (opsiyonel)</th>
-              <th className="px-4 py-3">Durum</th>
-              <th className="px-4 py-3"></th>
+              {headers.map((h, idx) => (
+                <th key={idx} className="px-4 py-3">
+                  {h}
+                </th>
+              ))}
             </tr>
           </thead>
+
           <tbody>
             {api.loading &&
               [...Array(4)].map((_, i) => (
-                <tr key={i} className="border-t border-gray-100">
-                  {Array.from({ length: 8 }).map((__, j) => (
+                <tr key={`sk-${i}`} className="border-t border-gray-100">
+                  {Array.from({ length: headers.length }).map((__, j) => (
                     <td key={j} className="px-4 py-3">
                       <div className="h-4 w-24 animate-pulse rounded bg-gray-200" />
                     </td>
@@ -185,20 +253,44 @@ export default function ApplicationsPage() {
               ))}
 
             {!api.loading &&
-              filtered.map((i) => (
-                <tr key={i.id} className="border-t border-gray-100">
-                  <td className="px-4 py-3 text-gray-700">
+              filtered.map((i) => {
+                const disp = displayTR(i.parent_phone);
+                const href = telHrefTR(i.parent_phone);
+
+                const cells = [
+                  <td key="created" className="px-4 py-3 text-gray-700">
                     {new Date(i.created_at).toLocaleString("tr-TR")}
-                  </td>
-                  <td className="px-4 py-3 font-medium text-gray-900">{i.student_name}</td>
-                  <td className="px-4 py-3 text-gray-800">{i.parent_name}</td>
-                  <td className="px-4 py-3 text-gray-800">{formatPhone(i.parent_phone)}</td>
-                  <td className="px-4 py-3 text-gray-800">{i.age}</td>
-                  <td className="px-4 py-3 text-gray-800">{i.date_id ? `${i.date_id} • 20:00` : "—"}</td>
-                  <td className="px-4 py-3">
+                  </td>,
+                  <td key="student" className="px-4 py-3 font-medium text-gray-900">
+                    {i.student_name}
+                  </td>,
+                  <td key="parent" className="px-4 py-3 text-gray-800">
+                    {i.parent_name}
+                  </td>,
+                  <td key="phone" className="px-4 py-3 text-gray-800">
+                    {disp ? (
+                      <a href={`tel:${href}`} className="hover:underline" title={i.parent_phone}>
+                        {disp}
+                      </a>
+                    ) : (
+                      "—"
+                    )}
+                  </td>,
+                  <td key="heard" className="px-4 py-3">
+                    <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
+                      {heardLabel(i)}
+                    </span>
+                  </td>,
+                  <td key="age" className="px-4 py-3 text-gray-800">
+                    {i.age}
+                  </td>,
+                  <td key="date" className="px-4 py-3 text-gray-800">
+                    {i.date_id ? `${i.date_id} • 20:00` : "—"}
+                  </td>,
+                  <td key="status" className="px-4 py-3">
                     <StatusPill status={i.status} />
-                  </td>
-                  <td className="px-4 py-3">
+                  </td>,
+                  <td key="actions" className="px-4 py-3">
                     <div className="flex flex-wrap gap-2">
                       <button
                         disabled={busyId === i.id}
@@ -229,13 +321,19 @@ export default function ApplicationsPage() {
                         Sil
                       </button>
                     </div>
-                  </td>
-                </tr>
-              ))}
+                  </td>,
+                ];
+
+                return (
+                  <tr key={i.id} className="border-t border-gray-100">
+                    {cells}
+                  </tr>
+                );
+              })}
 
             {!api.loading && filtered.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-10 text-center text-gray-500">
+                <td colSpan={headers.length} className="px-4 py-10 text-center text-gray-500">
                   Kriterlere uyan başvuru bulunamadı.
                 </td>
               </tr>
@@ -249,9 +347,7 @@ export default function ApplicationsPage() {
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
             <h3 className="text-lg font-semibold text-gray-900">Tanıtım Dersi Tarihi</h3>
-            <p className="mt-1 text-sm text-gray-600">
-              Başvuruyu onaylamak için ders tarih-saatini seç.
-            </p>
+            <p className="mt-1 text-sm text-gray-600">Başvuruyu onaylamak için ders tarih-saatini seç.</p>
 
             <div className="mt-4">
               <label className="text-sm text-gray-700">Tarih &amp; Saat</label>
@@ -261,9 +357,7 @@ export default function ApplicationsPage() {
                 onChange={(e) => setApproveWhen(e.target.value)}
                 className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-black focus:ring-black/20"
               />
-              <p className="mt-1 text-xs text-gray-500">
-                Saat dilimi: sisteminin yereli. Sunucuya ISO (UTC) gönderilir.
-              </p>
+              <p className="mt-1 text-xs text-gray-500">Saat dilimi: sisteminin yereli. Sunucuya ISO (UTC) gönderilir.</p>
             </div>
 
             <div className="mt-5 flex justify-end gap-2">
@@ -294,9 +388,7 @@ function StatCard({ title, value, gradient }: { title: string; value: number; gr
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
       <div className="text-xs font-medium uppercase tracking-wide text-gray-600">{title}</div>
-      <div
-        className={`mt-2 inline-flex items-center rounded-lg bg-gradient-to-r ${gradient} px-3 py-1 text-2xl font-bold text-white`}
-      >
+      <div className={`mt-2 inline-flex items-center rounded-lg bg-gradient-to-r ${gradient} px-3 py-1 text-2xl font-bold text-white`}>
         {new Intl.NumberFormat("tr-TR").format(value)}
       </div>
     </div>
@@ -311,9 +403,7 @@ function StatusPill({ status }: { status: "pending" | "approved" | "rejected" })
       ? "bg-amber-100 text-amber-700"
       : "bg-rose-100 text-rose-700";
   const label = status === "approved" ? "Onaylandı" : status === "pending" ? "Bekliyor" : "Reddedildi";
-  return (
-    <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold ${cls}`}>{label}</span>
-  );
+  return <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold ${cls}`}>{label}</span>;
 }
 
 function FilterBtn({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
@@ -327,12 +417,6 @@ function FilterBtn({ label, active, onClick }: { label: string; active: boolean;
       {label}
     </button>
   );
-}
-
-function formatPhone(v: string) {
-  const d = v.replace(/\D/g, "");
-  if (d.length < 10) return v;
-  return `0${d.slice(0, 3)} ${d.slice(3, 6)} ${d.slice(6, 8)} ${d.slice(8, 10)}`;
 }
 
 function toLocalDatetimeInputValue(d: Date) {

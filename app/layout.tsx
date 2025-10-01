@@ -1,6 +1,6 @@
 import "./globals.css";
 import Script from "next/script";
-import WhatsappButton from "@/components/WhatsappButton";
+import PublicOnlyWhatsApp from "@/components/PublicOnlyWhatsApp";
 
 export const metadata = {
   title: "PaletEvreni – Online Resim Kursu",
@@ -26,7 +26,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         className="min-h-dvh bg-gradient-to-br from-[#0f1020] via-[#131a3a] to-[#201040] text-white antialiased font-sans font-medium tracking-tight"
       >
         {children}
-        <WhatsappButton />
+        {/* Sadece public sitede göster */}
+        <PublicOnlyWhatsApp />
       </body>
     </html>
   );
