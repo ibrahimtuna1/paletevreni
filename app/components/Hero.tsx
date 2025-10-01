@@ -25,7 +25,7 @@ export default function Hero() {
       img: "/images/hero-figure.png",
       alt: "Palet Evreni",
       titleTop: "Ücretsiz",
-      titleGradient: "Tanıtım Dersi",
+      titleGradient: "Online Tanıtım Dersi",
       desc:
         "Palet Evreni’nde çocuklarınız hem eğlenecek hem de sanatla kendini ifade etmenin keyfini keşfedecek. Ücretsiz tanıtım dersimizde eğitmenlerimizi tanıyabilir, derslerin nasıl işlendiğini deneyimleyebilirsiniz.",
       ctaText: "HEMEN BAŞVUR",
