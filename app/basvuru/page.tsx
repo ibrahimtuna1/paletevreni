@@ -72,13 +72,7 @@ function formatTRMobileForDisplay(input: string): string {
 const HEARD_OPTIONS: { value: string; label: string }[] = [
   { value: "instagram", label: "Instagram" },
   { value: "google", label: "Google" },
-  { value: "arkadas", label: "Arkadaş Tavsiyesi" },
-  { value: "afis", label: "Afiş / Broşür" },
-  { value: "reklam", label: "Reklam" },
-  { value: "okul", label: "Okul" },
-  { value: "whatsapp", label: "WhatsApp" },
-  { value: "youtube", label: "YouTube" },
-  { value: "other", label: "Diğer" },
+  { value: "other", label: "Arkadaş Tavsiyesi" },
 ];
 
 const heardLabel = (v: string) => HEARD_OPTIONS.find((o) => o.value === v)?.label ?? "Seçilmedi";
