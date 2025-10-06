@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 
 /** Ödeme kaydı: student_id yok; student_package_id var */
 type Payment = {
@@ -48,9 +49,7 @@ const startOfDay = (d: Date) => { const x = new Date(d); x.setHours(0,0,0,0); re
 const daysDiff = (a: Date, b: Date) => Math.round((startOfDay(a).getTime() - startOfDay(b).getTime()) / 86400000);
 const fmtDate = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString("tr-TR") : "—");
 
-/** MVP: 1 aylık paket = 30 gün varsayımı.
- *  postpaid ise period_end ödeme günü kabul edilir. prepaid ise paid_at + 30.
- */
+/** MVP: 1 aylık paket = 30 gün varsayımı. */
 function calcNextDue(p: Payment): Date | null {
   const MONTH_DAYS = 30;
   if (p.period_end) return new Date(p.period_end);
@@ -58,12 +57,7 @@ function calcNextDue(p: Payment): Date | null {
   return null;
 }
 
-/** Trafik ışığı:
- *  - KIRMIZI: status != paid && next_due < bugün  (gecikmiş)
- *  - SARI:    status != paid && 0 <= gün <= 7     (yaklaşıyor)
- *  - YEŞİL:   status != paid && gün > 7           (günü var)
- *  paid olanlar ışığa girmez.
- */
+/** Trafik ışığı */
 function trafficLight(p: Payment) {
   const due = calcNextDue(p);
   if (!due) return null;
@@ -105,7 +99,7 @@ export default function PaymentsPage() {
   const selectAllOnPage = () => setSelected(new Set(items.map((x) => x.id)));
   const clearSelection = () => setSelected(new Set());
 
-  // modal (oluştur/düzenle)
+  // sadece DÜZENLE modalı
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Payment | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -114,7 +108,7 @@ export default function PaymentsPage() {
     student_package_id: "",
     amount: "",
     method: "card",
-    status: "pending", // postpaid dünyasında default pending
+    status: "pending",
     paid_at: "",
     period_start: "",
     period_end: "",
@@ -122,21 +116,6 @@ export default function PaymentsPage() {
   });
   const [busy, setBusy] = useState(false);
 
-  function openCreate() {
-    setEditing(null);
-    setPicked(null);
-    setForm({
-      student_package_id: "",
-      amount: "",
-      method: "card",
-      status: "pending",
-      paid_at: "", // ödemeyi gerçekten aldığında doldur
-      period_start: new Date().toISOString().slice(0, 10),
-      period_end: "",
-      note: "",
-    });
-    setModalOpen(true);
-  }
   function openEdit(p: Payment) {
     setEditing(p);
     setPicked({
@@ -209,10 +188,12 @@ export default function PaymentsPage() {
     load();
   }, [q, status, method, studentId, dateFrom, dateTo, page]);
 
-  /** Kaydet (create/update) */
+  /** SADECE UPDATE */
   async function save() {
-    if (!form.student_package_id) return alert("Öğrenci seç ve paketi bağla (student_package_id zorunlu).");
+    if (!editing) return alert("Düzenlenecek kayıt yok.");
+    if (!form.student_package_id) return alert("Öğrenci/paket zorunlu.");
     if (!form.amount) return alert("Tutar zorunlu");
+
     setBusy(true);
     const payload = {
       student_package_id: form.student_package_id,
@@ -224,14 +205,14 @@ export default function PaymentsPage() {
       period_end: form.period_end || null,
       note: form.note || null,
     };
-    const url = editing ? "/api/admin/payments/update" : "/api/admin/payments/create";
-    let res = await fetch(url, {
-      method: editing ? "PATCH" : "POST",
+
+    let res = await fetch("/api/admin/payments/update", {
+      method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(editing ? { id: editing.id, ...payload } : payload),
+      body: JSON.stringify({ id: editing.id, ...payload }),
     });
 
-    if (!res.ok && editing) {
+    if (!res.ok) {
       // fallback: POST /update
       res = await fetch("/api/admin/payments/update", {
         method: "POST",
@@ -244,7 +225,6 @@ export default function PaymentsPage() {
     setBusy(false);
     if (!res.ok) return alert(j?.error || "Kaydedilemedi");
     setModalOpen(false);
-    setPage(1);
     await load();
   }
 
@@ -312,7 +292,7 @@ export default function PaymentsPage() {
     alert("Hatırlatma gönderildi.");
   }
 
-  /** Seçili kişilere toplu SMS (teker teker gönderir) */
+  /** Seçili kişilere toplu SMS */
   async function remindSelected() {
     if (selected.size === 0) return alert("Seçili ödeme yok.");
     const targets = items.filter((p) => selected.has(p.id)).map((p) => ({ p, due: calcNextDue(p) }));
@@ -371,12 +351,13 @@ export default function PaymentsPage() {
           >
             Yenile
           </button>
-          <button
-            onClick={openCreate}
+          {/* Yeni ödeme artık ayrı sayfa */}
+          <Link
+            href="/admin/payments/new"
             className="rounded-lg bg-black px-3 py-2 text-sm font-medium text-white hover:opacity-90"
           >
             + Yeni Ödeme
-          </button>
+          </Link>
         </div>
       </div>
 
@@ -710,10 +691,10 @@ export default function PaymentsPage() {
             Önceki
           </button>
           <span>
-            Sayfa {page}/{pages}
+            Sayfa {page}/{Math.max(1, Math.ceil(total / pageSize))}
           </span>
           <button
-            disabled={page >= pages}
+            disabled={page >= Math.max(1, Math.ceil(total / pageSize))}
             onClick={() => setPage((p) => p + 1)}
             className="rounded-lg border border-gray-300 bg-white px-3 py-1 disabled:opacity-50"
           >
@@ -722,9 +703,9 @@ export default function PaymentsPage() {
         </div>
       </div>
 
-      {/* Modal */}
+      {/* Düzenleme Modalı */}
       {modalOpen && (
-        <Modal title={editing ? "Ödeme Düzenle" : "Yeni Ödeme"} onClose={() => setModalOpen(false)}>
+        <Modal title={"Ödeme Düzenle"} onClose={() => setModalOpen(false)}>
           <div className="space-y-3 text-gray-900">
             <Row label="Öğrenci *">
               <div className="flex items-center gap-2">
@@ -838,7 +819,7 @@ export default function PaymentsPage() {
         </Modal>
       )}
 
-      {/* Öğrenci seçici mini modalı */}
+      {/* Öğrenci seçici mini modalı (edit içinde lazım) */}
       {pickerOpen && (
         <StudentPicker
           onClose={() => setPickerOpen(false)}
@@ -918,23 +899,22 @@ function StudentPicker({ onClose, onPick }: { onClose: () => void; onPick: (x: a
   const [loading, setLoading] = useState(false);
 
   async function load() {
-  setLoading(true);
-  const res = await fetch(
-    `/api/admin/studentpackages/list?q=${encodeURIComponent(q)}`,
-    { cache: "no-store" }
-  );
-  const j = await res.json().catch(() => ({}));
-  setLoading(false);
-  if (!res.ok) return alert(j?.error || "Öğrenciler alınamadı");
+    setLoading(true);
+    const res = await fetch(
+      `/api/admin/studentpackages/list?q=${encodeURIComponent(q)}`,
+      { cache: "no-store" }
+    );
+    const j = await res.json().catch(() => ({}));
+    setLoading(false);
+    if (!res.ok) return alert(j?.error || "Öğrenciler alınamadı");
 
-  // butonun disable olmaması için student_package_id alanını garantiye al
-  const rows = (j.items || []).map((x: any) => ({
-    ...x,
-    student_package_id: x.student_package_id || x.id, // id zaten student_package_id
-  }));
-  setItems(rows);
-}
-
+    // butonun disable olmaması için student_package_id alanını garantiye al
+    const rows = (j.items || []).map((x: any) => ({
+      ...x,
+      student_package_id: x.student_package_id || x.id, // id zaten student_package_id
+    }));
+    setItems(rows);
+  }
 
   return (
     <div className="fixed inset-0 z-[60] grid place-items-center bg-black/40 p-4">
