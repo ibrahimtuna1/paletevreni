@@ -1,7 +1,7 @@
 // app/admin/(protected)/payments/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 /** Ödeme kaydı: student_id yok; student_package_id var */
@@ -21,7 +21,7 @@ type Payment = {
 };
 
 /** Filtre select'i için: öğrenci paketi (id=student_package_id) */
-type Student = { id: string; student_name: string; package_name?: string | null };
+type Student = { id: string; student_name: string; package_name?: string | null; student_id?: string | null };
 
 const money = (n: number) =>
   new Intl.NumberFormat("tr-TR", { style: "currency", currency: "TRY", maximumFractionDigits: 2 }).format(n);
@@ -40,34 +40,22 @@ const METHOD_LABEL: Record<Payment["method"], string> = {
 };
 
 // ---- yardımcılar ----
-const addDays = (d: Date, days: number) => {
-  const x = new Date(d);
-  x.setDate(x.getDate() + days);
-  return x;
-};
 const startOfDay = (d: Date) => { const x = new Date(d); x.setHours(0,0,0,0); return x; };
-const daysDiff = (a: Date, b: Date) => Math.round((startOfDay(a).getTime() - startOfDay(b).getTime()) / 86400000);
 const fmtDate = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString("tr-TR") : "—");
 
-/** MVP: 1 aylık paket = 30 gün varsayımı. */
-function calcNextDue(p: Payment): Date | null {
-  const MONTH_DAYS = 30;
+/**
+ * Kayıt bitişi: varsayılan olarak period_end gösterilir.
+ * period_end yoksa fallback: period_start + 4 hafta (1 aylık paket için).
+ * (Backende eklediğimiz trigger ile period_end zaten doğru hesaplanıyor.)
+ */
+function calcRegisterEnd(p: Payment): Date | null {
   if (p.period_end) return new Date(p.period_end);
-  if (p.paid_at) return addDays(new Date(p.paid_at), MONTH_DAYS);
+  if (p.period_start) {
+    const d = new Date(p.period_start);
+    d.setDate(d.getDate() + 7 * 4 - 1); // 1 aylık=4 ders → ilk dersten 3 hafta sonra son ders (toplam 4 ders günü)
+    return d;
+  }
   return null;
-}
-
-/** Trafik ışığı */
-function trafficLight(p: Payment) {
-  const due = calcNextDue(p);
-  if (!due) return null;
-  if (p.status === "paid") return null;
-
-  const now = new Date();
-  const d = daysDiff(due, now); // due - now (gün)
-  if (d < 0) return "red";
-  if (d <= 7) return "yellow";
-  return "green";
 }
 
 export default function PaymentsPage() {
@@ -77,6 +65,13 @@ export default function PaymentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // paket/öğrenci map'leri + geçmiş UI state'leri
+  const [pkgBySpId, setPkgBySpId] = useState<Record<string, string>>({});
+  const [studentIdBySpId, setStudentIdBySpId] = useState<Record<string, string>>({});
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({}); // paymentId -> expanded
+  const [historyCache, setHistoryCache] = useState<Record<string, any[]>>({}); // studentId -> history[]
+  const [historyLoading, setHistoryLoading] = useState<Record<string, boolean>>({});
 
   // filtreler
   const [q, setQ] = useState("");
@@ -120,7 +115,7 @@ export default function PaymentsPage() {
     setEditing(p);
     setPicked({
       student_name: p.student_name || "—",
-      package_name: null,
+      package_name: pkgBySpId[p.student_package_id] || null,
       student_package_id: p.student_package_id,
     });
     setForm({
@@ -138,16 +133,27 @@ export default function PaymentsPage() {
 
   /** Filtre select'i için: öğrenci paketlerini getir */
   async function fetchStudents() {
-    const res = await fetch("/api/admin/student-packages/list", { cache: "no-store" });
+    const res = await fetch("/api/admin/studentpackages/list", { cache: "no-store" });
     const j = await res.json().catch(() => ({}));
     if (res.ok) {
       const arr = (j.items ?? []).map((x: any) => ({
         id: x.id, // student_package_id
         student_name: x.student_name ?? "İsimsiz",
         package_name: x.package_name ?? null,
+        student_id: x.student_id ?? null,
       })) as Student[];
       arr.sort((a, b) => a.student_name.localeCompare(b.student_name, "tr"));
       setStudents(arr);
+
+      // hızlı lookup map'leri
+      const pkgMap: Record<string, string> = {};
+      const sidMap: Record<string, string> = {};
+      for (const s of arr) {
+        if (s.id && s.package_name) pkgMap[s.id] = s.package_name;
+        if (s.id && s.student_id) sidMap[s.id] = s.student_id;
+      }
+      setPkgBySpId(pkgMap);
+      setStudentIdBySpId(sidMap);
     }
   }
 
@@ -254,19 +260,32 @@ export default function PaymentsPage() {
     await load();
   }
 
-  // ---- Uyarı kümeleri ----
-  const { overdue, dueSoon, safe } = useMemo(() => {
-    const list = (items || []).map((p) => ({ p, tl: trafficLight(p), due: calcNextDue(p) }));
-    const overdue = list
-      .filter((x) => x.tl === "red")
-      .sort((a, b) => (a.due!.getTime() - b.due!.getTime()));
-    const dueSoon = list
-      .filter((x) => x.tl === "yellow")
-      .sort((a, b) => (a.due!.getTime() - b.due!.getTime()));
-    const safe = list
-      .filter((x) => x.tl === "green")
-      .sort((a, b) => (a.due!.getTime() - b.due!.getTime()));
-    return { overdue, dueSoon, safe };
+  // Kayıt durum kümeleri (period_end'e göre)
+  const { expired, upcoming, active } = useMemo(() => {
+    const now = new Date();
+    const list = (items || []).map((p) => {
+      const end = calcRegisterEnd(p);
+      return { p, end };
+    }).filter(x => x.end !== null) as { p: Payment; end: Date }[];
+
+    const diffDays = (a: Date, b: Date) => Math.round((startOfDay(a).getTime() - startOfDay(b).getTime()) / 86400000);
+
+    const expired = list
+      .filter((x) => diffDays(x.end, now) < 0) // geçmiş
+      .sort((a, b) => a.end.getTime() - b.end.getTime());
+
+    const upcoming = list
+      .filter((x) => {
+        const d = diffDays(x.end, now);
+        return d >= 0 && d <= 7; // 7 gün içinde yaklaşan kayıt yenileme
+      })
+      .sort((a, b) => a.end.getTime() - b.end.getTime());
+
+    const active = list
+      .filter((x) => diffDays(x.end, now) > 7) // 7 günden fazla zamanı olanlar
+      .sort((a, b) => a.end.getTime() - b.end.getTime());
+
+    return { expired, upcoming, active };
   }, [items]);
 
   /** Tek kişiye SMS */
@@ -295,20 +314,17 @@ export default function PaymentsPage() {
   /** Seçili kişilere toplu SMS */
   async function remindSelected() {
     if (selected.size === 0) return alert("Seçili ödeme yok.");
-    const targets = items.filter((p) => selected.has(p.id)).map((p) => ({ p, due: calcNextDue(p) }));
-    const sample = targets[0];
-    const defaultMsg = `Merhaba, ${targets.length} kişi için ödeme hatırlatması gönderilecektir. En yakın örnek tarih: ${
-      sample?.due ? sample.due.toLocaleDateString("tr-TR") : "—"
-    }. Sorunuz varsa bize yazabilirsiniz.`;
+    const targets = items.filter((p) => selected.has(p.id));
+    const defaultMsg = `Merhaba, ${targets.length} kişi için yenileme hatırlatması gönderilecektir.`;
     const custom = prompt("SMS içeriği (tümüne):", defaultMsg);
     if (custom === null) return;
 
     let ok = 0, fail = 0;
-    for (const t of targets) {
+    for (const p of targets) {
       const res = await fetch("/api/admin/payments/remind", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paymentId: t.p.id, customMessage: custom }),
+        body: JSON.stringify({ paymentId: p.id, customMessage: custom }),
       });
       if (res.ok) ok++; else fail++;
     }
@@ -316,6 +332,23 @@ export default function PaymentsPage() {
   }
 
   const pages = Math.max(1, Math.ceil(total / pageSize));
+
+  // Öğrenci geçmişini yükleme helper'ı
+  async function loadHistoryFor(studentId: string) {
+    if (!studentId) return;
+    setHistoryLoading((m) => ({ ...m, [studentId]: true }));
+    try {
+      const res = await fetch(`/api/admin/studentpackages/last?student_id=${encodeURIComponent(studentId)}&history=1`, { cache: "no-store" });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j?.error || "Geçmiş alınamadı");
+      const hist = Array.isArray(j?.history) ? j.history : [];
+      setHistoryCache((m) => ({ ...m, [studentId]: hist }));
+    } catch {
+      setHistoryCache((m) => ({ ...m, [studentId]: [] }));
+    } finally {
+      setHistoryLoading((m) => ({ ...m, [studentId]: false }));
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -363,17 +396,17 @@ export default function PaymentsPage() {
 
       {err && <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-rose-800">{err}</div>}
 
-      {/* KIRMIZI: Geciken Ödemeler */}
-      {overdue.length > 0 && (
+      {/* Geçmiş Kayıtlar (bitiş tarihi geçmiş) */}
+      {expired.length > 0 && (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 shadow-sm">
           <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-rose-900">Geciken Ödemeler</h2>
+            <h2 className="text-lg font-semibold text-rose-900">Geçmiş Kayıtlar (bitiş tarihi geçmiş)</h2>
             <span className="rounded-lg bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-900">
-              {overdue.length} kişi
+              {expired.length} kişi
             </span>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
-            {overdue.map(({ p, due }) => (
+            {expired.map(({ p, end }) => (
               <div key={p.id} className="rounded-xl border border-rose-200 bg-white p-3">
                 <div className="flex items-center justify-between">
                   <div>
@@ -381,20 +414,23 @@ export default function PaymentsPage() {
                     <div className="text-xs text-gray-700">
                       {p.parent_name} • {p.parent_phone_e164}
                     </div>
+                    <div className="mt-0.5 text-xs text-gray-600">
+                      Paket: {pkgBySpId[p.student_package_id] || "—"}
+                    </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-xs text-gray-700">Vade</div>
+                    <div className="text-xs text-gray-700">Bitiş</div>
                     <div className="text-sm font-semibold text-rose-900">
-                      {due ? due.toLocaleDateString("tr-TR") : "—"}
+                      {end ? end.toLocaleDateString("tr-TR") : "—"}
                     </div>
                   </div>
                 </div>
                 <div className="mt-2 flex gap-2">
                   <button
-                    onClick={() => remindOne(p, due)}
+                    onClick={() => remindOne(p, end)}
                     className="rounded-md bg-black px-2 py-1 text-xs font-medium text-white hover:opacity-90"
                   >
-                    SMS Hatırlat
+                    Yenileme Hatırlat (SMS)
                   </button>
                   <button
                     onClick={() => openEdit(p)}
@@ -409,17 +445,17 @@ export default function PaymentsPage() {
         </div>
       )}
 
-      {/* SARI: Yaklaşan Ödemeler (7 gün) */}
-      {dueSoon.length > 0 && (
+      {/* Yaklaşan Kayıtlar (7 gün) */}
+      {upcoming.length > 0 && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
           <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-amber-900">Yaklaşan Ödemeler (7 gün)</h2>
+            <h2 className="text-lg font-semibold text-amber-900">Yaklaşan Kayıtlar (7 gün)</h2>
             <span className="rounded-lg bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">
-              {dueSoon.length} kişi
+              {upcoming.length} kişi
             </span>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
-            {dueSoon.map(({ p, due }) => (
+            {upcoming.map(({ p, end }) => (
               <div key={p.id} className="rounded-xl border border-amber-200 bg-white p-3">
                 <div className="flex items-center justify-between">
                   <div>
@@ -427,20 +463,23 @@ export default function PaymentsPage() {
                     <div className="text-xs text-gray-700">
                       {p.parent_name} • {p.parent_phone_e164}
                     </div>
+                    <div className="mt-0.5 text-xs text-gray-600">
+                      Paket: {pkgBySpId[p.student_package_id] || "—"}
+                    </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-xs text-gray-700">Sonraki tarih</div>
+                    <div className="text-xs text-gray-700">Bitiş</div>
                     <div className="text-sm font-semibold text-gray-900">
-                      {due ? due.toLocaleDateString("tr-TR") : "—"}
+                      {end ? end.toLocaleDateString("tr-TR") : "—"}
                     </div>
                   </div>
                 </div>
                 <div className="mt-2 flex gap-2">
                   <button
-                    onClick={() => remindOne(p, due)}
+                    onClick={() => remindOne(p, end)}
                     className="rounded-md bg-black px-2 py-1 text-xs font-medium text-white hover:opacity-90"
                   >
-                    SMS Hatırlat
+                    Yenileme Hatırlat (SMS)
                   </button>
                   <button
                     onClick={() => openEdit(p)}
@@ -466,7 +505,7 @@ export default function PaymentsPage() {
 
       {/* Metot Kırılımı */}
       <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-2 text-lg font-semibold text-gray-900">Metot Kırılımı (filtre)</h2>
+        <h2 className="mb-2 text-lg font-semibold text-gray-900">Metot Kırılımı (ödemeler)</h2>
         <div className="flex flex-wrap gap-2 text-sm">
           {(["card", "cash", "transfer"] as Payment["method"][]).map((m) => (
             <span
@@ -575,8 +614,7 @@ export default function PaymentsPage() {
               <th className="px-4 py-3">Tutar</th>
               <th className="px-4 py-3">Metot</th>
               <th className="px-4 py-3">Durum</th>
-              <th className="px-4 py-3">Dönem</th>
-              <th className="px-4 py-3">Işık</th>
+              <th className="px-4 py-3">İlk–Son Ders</th>
               <th className="px-4 py-3">Not</th>
               <th className="px-4 py-3">İşlem</th>
             </tr>
@@ -584,17 +622,15 @@ export default function PaymentsPage() {
           <tbody className="text-[15px] text-gray-900">
             {loading && (
               <tr>
-                <td colSpan={10} className="px-4 py-6 text-center text-gray-700">
+                <td colSpan={9} className="px-4 py-6 text-center text-gray-700">
                   Yükleniyor…
                 </td>
               </tr>
             )}
             {!loading &&
-              items.map((p) => {
-                const due = calcNextDue(p);
-                const tl = trafficLight(p);
-                return (
-                  <tr key={p.id} className="border-t border-gray-100">
+              items.map((p) => (
+                <React.Fragment key={p.id}>
+                  <tr className="border-t border-gray-100">
                     <td className="px-4 py-3">
                       <input
                         type="checkbox"
@@ -608,6 +644,9 @@ export default function PaymentsPage() {
                       <div className="font-semibold text-gray-900">{p.student_name || "—"}</div>
                       <div className="text-xs text-gray-700">
                         {p.parent_name} • {p.parent_phone_e164}
+                      </div>
+                      <div className="mt-0.5 text-xs text-gray-600">
+                        Paket: {pkgBySpId[p.student_package_id] || "—"}
                       </div>
                     </td>
                     <td className="px-4 py-3 font-semibold">{money(Number(p.amount || 0))}</td>
@@ -632,13 +671,7 @@ export default function PaymentsPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      {fmtDate(p.period_start)} – {fmtDate(p.period_end)}
-                    </td>
-                    <td className="px-4 py-3">
-                      {tl === "red" && <span className="inline-block h-3 w-3 rounded-full bg-rose-500" title="Gecikmiş" />}
-                      {tl === "yellow" && <span className="inline-block h-3 w-3 rounded-full bg-amber-500" title="Yakında" />}
-                      {tl === "green" && <span className="inline-block h-3 w-3 rounded-full bg-emerald-500" title="Günü var" />}
-                      {!tl && <span className="text-xs text-gray-500">—</span>}
+                      {fmtDate(p.period_start)} – {(() => { const end = calcRegisterEnd(p); return end ? end.toLocaleDateString("tr-TR") : "—"; })()}
                     </td>
                     <td className="px-4 py-3">{p.note || "—"}</td>
                     <td className="px-4 py-3">
@@ -650,7 +683,10 @@ export default function PaymentsPage() {
                           Düzenle
                         </button>
                         <button
-                          onClick={() => remindOne(p, due)}
+                          onClick={() => {
+                            const end = calcRegisterEnd(p);
+                            remindOne(p, end);
+                          }}
                           className="rounded-md bg-black px-2 py-1 text-xs font-medium text-white hover:opacity-90"
                         >
                           SMS
@@ -661,14 +697,77 @@ export default function PaymentsPage() {
                         >
                           Sil
                         </button>
+                        <button
+                          onClick={() => setExpanded((m) => ({ ...m, [p.id]: !m[p.id] }))}
+                          className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-900 hover:bg-gray-50"
+                        >
+                          {expanded[p.id] ? "Gizle" : "Geçmiş"}
+                        </button>
                       </div>
                     </td>
                   </tr>
-                );
-              })}
+
+                  {expanded[p.id] && (
+                    <tr className="bg-gray-50/50">
+                      <td colSpan={9} className="px-4 py-3">
+                        {(() => {
+                          const sid = studentIdBySpId[p.student_package_id];
+                          if (!sid) return <div className="text-sm text-gray-700">Öğrenci kimliği bulunamadı.</div>;
+                          const hist = historyCache[sid];
+                          const loading = !!historyLoading[sid];
+                          if (!hist && !loading) {
+                            loadHistoryFor(sid);
+                          }
+                          return (
+                            <div className="text-sm text-gray-800">
+                              <div className="mb-2 flex items-center gap-2">
+                                <span className="font-semibold">Kayıt Geçmişi</span>
+                                {loading && <span className="text-xs text-gray-500">Yükleniyor…</span>}
+                              </div>
+                              {Array.isArray(hist) && hist.length > 0 ? (
+                                <div className="overflow-auto">
+                                  <table className="min-w-full text-xs">
+                                    <thead className="bg-white text-left font-semibold text-gray-800">
+                                      <tr>
+                                        <th className="px-2 py-1">Başlangıç</th>
+                                        <th className="px-2 py-1">Bitiş</th>
+                                        <th className="px-2 py-1">Paket</th>
+                                        <th className="px-2 py-1">Seans</th>
+                                        <th className="px-2 py-1">Ücret</th>
+                                        <th className="px-2 py-1">Durum</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {hist.map((h: any) => (
+                                        <tr key={h.id} className="border-t">
+                                          <td className="px-2 py-1">{h.start_date || "—"}</td>
+                                          <td className="px-2 py-1">{h.end_date || "—"}</td>
+                                          <td className="px-2 py-1">{h.package_title || h.package_code || h.package_id || "—"}</td>
+                                          <td className="px-2 py-1">{typeof h.sessions_total === 'number' ? h.sessions_total : (h.duration_days ? Math.round(h.duration_days/7) : "—")}</td>
+                                          <td className="px-2 py-1">{h.price_at_purchase ? `${h.price_at_purchase} ₺` : "—"}</td>
+                                          <td className="px-2 py-1">{h.status || "—"}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                  <div className="mt-2 text-xs text-gray-600">
+                                    İlk Kayıt: <b>{hist[0]?.start_date || "—"}</b> • Toplam Yenileme: <b>{Math.max(0, hist.length - 1)}</b>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="text-sm text-gray-700">Geçmiş bulunamadı.</div>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              ))}
             {!loading && items.length === 0 && (
               <tr>
-                <td colSpan={10} className="px-4 py-10 text-center text-gray-700">
+                <td colSpan={9} className="px-4 py-10 text-center text-gray-700">
                   Kayıt yok.
                 </td>
               </tr>

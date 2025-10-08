@@ -68,17 +68,7 @@ export default function TrialsPage() {
   const [sellTrialId, setSellTrialId] = useState<string | null>(null);
   const [packages, setPackages] = useState<Package[]>([]);
   const [pkgId, setPkgId] = useState<string>("");
-  const [paidAmount, setPaidAmount] = useState<string>(""); // opsiyonel
-  const [paidAt, setPaidAt] = useState<string>(() => {
-    const d = new Date();
-    const yy = d.getFullYear();
-    const mm = pad(d.getMonth() + 1);
-    const dd = pad(d.getDate());
-    const hh = pad(d.getHours());
-    const mi = pad(d.getMinutes());
-    return `${yy}-${mm}-${dd}T${hh}:${mi}`;
-  });
-  const [method, setMethod] = useState<"cash" | "card" | "transfer" | "other">("cash");
+  const [periodStart, setPeriodStart] = useState<string>(() => ymd(new Date()));
   const [selling, setSelling] = useState(false);
 
   // *** Manuel başvuru modal state (yeni) ***
@@ -131,6 +121,7 @@ export default function TrialsPage() {
   useEffect(() => {
     // aktif gün değişince manuel formun tarihini de günün 20:00’ına çek
     setMWhen(`${activeDay}T20:00`);
+    setPeriodStart(activeDay);
     load();
     // msgText resetlemek istersen:
     // setMsgText(""); setMsgOpen(false);
@@ -171,9 +162,7 @@ export default function TrialsPage() {
     const body = {
       trialId: sellTrialId,
       packageId: pkgId,
-      paidAmount: paidAmount ? Number(paidAmount) : 0,
-      paidAt: paidAt ? new Date(paidAt).toISOString() : null,
-      method,
+      period_start: periodStart ? new Date(periodStart).toISOString().slice(0, 10) : null
     };
     const res = await fetch("/api/admin/students/promote", {
       method: "POST",
@@ -189,7 +178,7 @@ export default function TrialsPage() {
     setSellOpen(false);
     setSellTrialId(null);
     setPkgId("");
-    setPaidAmount("");
+    setPeriodStart(activeDay);
     await load(); // listeyi tazele
   }
 
@@ -489,7 +478,7 @@ export default function TrialsPage() {
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
           <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl">
             <h3 className="text-lg font-semibold text-gray-900">Paket Satın Al</h3>
-            <p className="mt-1 text-sm text-gray-600">Paket seçin; isterseniz ilk ödemeyi de girin.</p>
+            <p className="mt-1 text-sm text-gray-600">Paket seçin ve dönem başlangıç tarihini belirtin.</p>
 
             <div className="mt-4 space-y-3">
               <div>
@@ -507,43 +496,15 @@ export default function TrialsPage() {
                   ))}
                 </select>
               </div>
-
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="text-sm text-gray-700">İlk Ödeme (₺)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={paidAmount}
-                    onChange={(e) => setPaidAmount(e.target.value)}
-                    placeholder="opsiyonel"
-                    className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm text-gray-700">Ödeme Tarihi/Saati</label>
-                  <input
-                    type="datetime-local"
-                    value={paidAt}
-                    onChange={(e) => setPaidAt(e.target.value)}
-                    className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
-                  />
-                </div>
-              </div>
-
               <div>
-                <label className="text-sm text-gray-700">Ödeme Yöntemi</label>
-                <select
-                  value={method}
-                  onChange={(e) => setMethod(e.target.value as any)}
+                <label className="text-sm text-gray-700">Dönem Başlangıcı (İlk Ders)</label>
+                <input
+                  type="date"
+                  value={periodStart}
+                  onChange={(e) => setPeriodStart(e.target.value)}
                   className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
-                >
-                  <option value="cash">Nakit</option>
-                  <option value="card">Kart</option>
-                  <option value="transfer">Havale/EFT</option>
-                  <option value="other">Diğer</option>
-                </select>
+                />
+                <div className="mt-1 text-xs text-gray-500">Örn: {trDay(new Date(activeDay))} günü için {activeDay}</div>
               </div>
             </div>
 

@@ -6,7 +6,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 type PaymentMethod = "card" | "cash" | "transfer";
-type PaymentStatus = "paid" | "pending" | "failed" | "refunded";
 
 type StudentLite = {
   id: string;
@@ -34,66 +33,84 @@ export default function NewPaymentPage() {
   const [packagePickerOpen, setPackagePickerOpen] = useState(false);
 
   const [form, setForm] = useState<any>({
-    amount: "",
     method: "card" as PaymentMethod,
-    status: "pending" as PaymentStatus,
-    paid_at: "",
-    period_start: new Date().toISOString().slice(0, 10),
-    period_end: "",
     note: "",
   });
   const [busy, setBusy] = useState(false);
 
-  async function ensureStudentPackageId(): Promise<string> {
-    // varolan bir student_packages var mı diye sormak istersen
-    // ileride /api/admin/student-packages/find?student_id=&package_id= gibi bir endpoint eklenebilir.
-    // Şimdilik direkt create deniyoruz; backend "unique" varsa döndürür, yoksa oluşturur.
+  // Preview state for renewal logic
+  const [lastEnd, setLastEnd] = useState<string | null>(null);           // YYYY-MM-DD of previous period_end
+  const [previewStart, setPreviewStart] = useState<string | null>(null); // computed: lastEnd + 7 days
+  const [previewEnd, setPreviewEnd] = useState<string | null>(null);     // computed from pkg.duration_days: start + (duration_days - 7)
+  // Registration history state
+  const [history, setHistory] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
-    const res = await fetch("/api/admin/studentpackages/create", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        student_id: student!.id,
-        package_id: pkg!.id,
-        // opsiyonel alanlar:
-        start_date: form.period_start || new Date().toISOString().slice(0, 10),
-        price_at_purchase: form.amount ? Number(form.amount) : null,
-        status: "active",
-      }),
-    });
-    const j = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(j?.error || "student_packages oluşturulamadı");
-    return j.id as string;
+  function toYMD(d: Date) {
+    return d.toISOString().slice(0, 10);
   }
+  function addDaysStr(ymd: string, days: number) {
+    const d = new Date(ymd);
+    d.setDate(d.getDate() + days);
+    return toYMD(d);
+  }
+
+  async function loadLastEnd(studentId: string) {
+    setLastEnd(null);
+    setHistory([]);
+    setLoadingHistory(true);
+    try {
+      const res = await fetch(`/api/admin/studentpackages/last?student_id=${encodeURIComponent(studentId)}&history=1`, { cache: "no-store" });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j?.error || "Son kayıt alınamadı");
+      const end = j?.period_end as string | null;
+      setLastEnd(end || null);
+      setHistory(Array.isArray(j?.history) ? j.history : []);
+    } catch {
+      setLastEnd(null);
+      setHistory([]);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }
+
+  useEffect(() => {
+    if (lastEnd && pkg?.duration_days) {
+      const start = addDaysStr(lastEnd, 0); // 1 hafta ileri değil, 1 hafta daha erken (tüm tarihler 1 hafta geri çekildi)
+      // 1 ay = 4 ders → ilk dersten 3 hafta sonra son ders => duration_days - 7
+      const end = addDaysStr(start, Math.max(0, (pkg.duration_days || 0) - 7));
+      setPreviewStart(start);
+      setPreviewEnd(end);
+    } else {
+      setPreviewStart(null);
+      setPreviewEnd(null);
+    }
+  }, [lastEnd, pkg?.duration_days]);
 
   async function save() {
     if (!student) return alert("Öğrenciyi seç.");
     if (!pkg) return alert("Paketi seç.");
-    if (!form.amount) return alert("Tutar zorunlu");
-
     setBusy(true);
     try {
-      const student_package_id = await ensureStudentPackageId();
-
-      const payload = {
-        student_package_id,
-        amount: Number(form.amount),
-        method: form.method,
-        status: form.status,
-        paid_at: form.paid_at ? new Date(form.paid_at).toISOString() : null,
-        period_start: form.period_start || null,
-        period_end: form.period_end || null,
-        note: form.note || null,
-      };
-
-      const res = await fetch("/api/admin/payments/create", {
+      const res = await fetch("/api/admin/studentpackages/renew", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          student_id: student.id,
+          package_id: pkg.id,
+          method: form.method,
+          note: form.note || null,
+          // isteğe bağlı: frontend hesapladığı tarihler, backend doğrular/override eder
+          preview: {
+            period_start: previewStart,
+            period_end: previewEnd,
+          }
+        }),
       });
       const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j?.error || "Ödeme kaydı oluşturulamadı");
-
+      if (!res.ok) throw new Error(j?.error || "Kayıt yenileme başarısız");
+      // Beklenti: backend yeni student_package oluşturur (öncekini pasife çeker),
+      // payment sayısını artırır ve tarihlerle döner.
       router.push("/admin/payments");
     } catch (e: any) {
       alert(e.message || "Hata");
@@ -102,23 +119,12 @@ export default function NewPaymentPage() {
     }
   }
 
-  // paket seçildiğinde vade alanını hafifçe doldurmak istersen (opsiyonel)
-  useEffect(() => {
-    if (pkg?.duration_days && form.period_start) {
-      const d0 = new Date(form.period_start);
-      const d1 = new Date(d0);
-      d1.setDate(d1.getDate() + (pkg.duration_days || 0));
-      setForm((f: any) => ({ ...f, period_end: d1.toISOString().slice(0, 10) }));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pkg?.duration_days, form.period_start]);
-
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Yeni Ödeme</h1>
-          <p className="text-sm text-gray-700">Öğrenci + paket seç, detayları gir, kaydet.</p>
+          <h1 className="text-2xl font-bold text-gray-900">Yeni Kayıt</h1>
+          <p className="text-sm text-gray-700">Öğrenci + paket seç; yöntem ve not ekle. Tarihler, önceki dönemin bitişine göre 1 hafta geri çekilerek hesaplanır.</p>
         </div>
         <Link
           href="/admin/payments"
@@ -189,70 +195,70 @@ export default function NewPaymentPage() {
             {!student && <div className="mt-2 text-xs text-amber-700">Paket aramak için önce öğrenciyi seç.</div>}
           </Row>
 
-          {/* Tutar / Metot / Durum */}
-          <Row label="Tutar *">
-            <input
-              type="number"
-              step="0.01"
-              value={form.amount}
-              onChange={(e) => setForm((f: any) => ({ ...f, amount: e.target.value }))}
+          {/* Yenileme Önizleme */}
+          {student && pkg && (
+            <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-800">
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                <div><span className="font-semibold">Önceki Bitiş:</span> {lastEnd || "—"}</div>
+                <div><span className="font-semibold">Yeni İlk Ders:</span> {previewStart || "—"}</div>
+                <div><span className="font-semibold">Yeni Son Ders:</span> {previewEnd || "—"}</div>
+              </div>
+              {!lastEnd && <div className="mt-1 text-xs text-amber-700">Bu öğrenci için önceki kayıt bulunamadı. İlk ders, bugünden sonraki ilk uygun hafta gününe backend belirlemeli.</div>}
+            </div>
+          )}
+
+          {/* Kayıt Geçmişi */}
+          {student && (
+            <div className="mt-4 rounded-lg border border-gray-200 bg-white p-3 text-sm text-gray-800">
+              <div className="mb-2 flex items-center justify-between">
+                <div className="font-semibold">Kayıt Geçmişi</div>
+                {loadingHistory && <div className="text-xs text-gray-500">Yükleniyor…</div>}
+              </div>
+              {history.length === 0 ? (
+                <div className="text-gray-600 text-sm">Geçmiş kayıt bulunamadı.</div>
+              ) : (
+                <div className="overflow-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-gray-50 text-left font-semibold text-gray-800">
+                      <tr>
+                        <th className="px-3 py-2">Başlangıç</th>
+                        <th className="px-3 py-2">Bitiş</th>
+                        <th className="px-3 py-2">Paket</th>
+                        <th className="px-3 py-2">Seans</th>
+                        <th className="px-3 py-2">Ücret</th>
+                        <th className="px-3 py-2">Durum</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {history.map((h:any) => (
+                        <tr key={h.id} className="border-t">
+                          <td className="px-3 py-2">{h.start_date || "—"}</td>
+                          <td className="px-3 py-2">{h.end_date || "—"}</td>
+                          <td className="px-3 py-2">{h.package_title || h.package_code || h.package_id || "—"}</td>
+                          <td className="px-3 py-2">{typeof h.sessions_total === 'number' ? h.sessions_total : (h.duration_days ? Math.round(h.duration_days/7) : "—")}</td>
+                          <td className="px-3 py-2">{h.price_at_purchase ? `${h.price_at_purchase} ₺` : "—"}</td>
+                          <td className="px-3 py-2">{h.status || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Metot */}
+          <Row label="Metot *">
+            <select
+              value={form.method}
+              onChange={(e) => setForm((f: any) => ({ ...f, method: e.target.value }))}
               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
-            />
+            >
+              <option value="card">Kart</option>
+              <option value="cash">Nakit</option>
+              <option value="transfer">Havale/EFT</option>
+            </select>
           </Row>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Row label="Metot *">
-              <select
-                value={form.method}
-                onChange={(e) => setForm((f: any) => ({ ...f, method: e.target.value }))}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
-              >
-                <option value="card">Kart</option>
-                <option value="cash">Nakit</option>
-                <option value="transfer">Havale/EFT</option>
-              </select>
-            </Row>
-            <Row label="Durum *">
-              <select
-                value={form.status}
-                onChange={(e) => setForm((f: any) => ({ ...f, status: e.target.value }))}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
-              >
-                <option value="paid">Ödendi</option>
-                <option value="pending">Bekliyor</option>
-                <option value="failed">Başarısız</option>
-                <option value="refunded">İade</option>
-              </select>
-            </Row>
-          </div>
-
-          {/* Dönem */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Row label="Ödeme Tarihi (gerçekleştiyse)">
-              <input
-                type="date"
-                value={form.paid_at}
-                onChange={(e) => setForm((f: any) => ({ ...f, paid_at: e.target.value }))}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
-              />
-            </Row>
-            <Row label="Dönem Başlangıç">
-              <input
-                type="date"
-                value={form.period_start}
-                onChange={(e) => setForm((f: any) => ({ ...f, period_start: e.target.value }))}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
-              />
-            </Row>
-            <Row label="Dönem Bitiş (vade)">
-              <input
-                type="date"
-                value={form.period_end}
-                onChange={(e) => setForm((f: any) => ({ ...f, period_end: e.target.value }))}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
-              />
-            </Row>
-          </div>
 
           <Row label="Not">
             <textarea
@@ -276,7 +282,7 @@ export default function NewPaymentPage() {
             onClick={save}
             className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
           >
-            {busy ? "Kaydediliyor…" : "Kaydet"}
+            {busy ? "Kaydediliyor…" : "Kaydı Yenile / Oluştur"}
           </button>
         </div>
       </div>
@@ -284,9 +290,10 @@ export default function NewPaymentPage() {
       {studentPickerOpen && (
         <StudentPicker
           onClose={() => setStudentPickerOpen(false)}
-          onPick={(x) => {
+          onPick={async (x) => {
             setStudent(x);
             setPkg(null); // öğrenci değişirse paketi sıfırla
+            await loadLastEnd(x.id);
             setStudentPickerOpen(false);
           }}
         />
@@ -456,15 +463,17 @@ function PackagePicker({ onClose, onPick }: { onClose: () => void; onPick: (x: P
               <tr>
                 <th className="px-3 py-2">Paket</th>
                 <th className="px-3 py-2">Süre</th>
+                <th className="px-3 py-2">Ücret</th>
                 <th className="px-3 py-2">Seç</th>
               </tr>
             </thead>
             <tbody>
-              {loading && <tr><td colSpan={3} className="px-3 py-4 text-center text-gray-700">Yükleniyor…</td></tr>}
+              {loading && <tr><td colSpan={4} className="px-3 py-4 text-center text-gray-700">Yükleniyor…</td></tr>}
               {!loading && items.map((x) => (
                 <tr key={x.id} className="border-t">
                   <td className="px-3 py-2">{x.display_name}</td>
                   <td className="px-3 py-2">{x.duration_days ? `${x.duration_days} gün` : "—"}</td>
+                  <td className="px-3 py-2">{typeof (x as any).price === "number" ? `${(x as any).price} ₺` : "—"}</td>
                   <td className="px-3 py-2">
                     <button
                       onClick={() => onPick(x)}
@@ -476,7 +485,7 @@ function PackagePicker({ onClose, onPick }: { onClose: () => void; onPick: (x: P
                 </tr>
               ))}
               {!loading && items.length === 0 && !err && (
-                <tr><td colSpan={3} className="px-3 py-6 text-center text-gray-700">Sonuç yok.</td></tr>
+                <tr><td colSpan={4} className="px-3 py-6 text-center text-gray-700">Sonuç yok.</td></tr>
               )}
             </tbody>
           </table>
