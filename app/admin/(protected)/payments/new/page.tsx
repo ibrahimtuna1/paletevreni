@@ -17,7 +17,7 @@ type StudentLite = {
 type PackageLite = {
   id: string;
   display_name: string;
-  duration_days?: number | null;
+  duration_days?: number | null; // (valid_weeks || total_sessions || 4) * 7
   price?: number | null;
   is_active?: boolean | null;
 };
@@ -25,26 +25,24 @@ type PackageLite = {
 export default function NewPaymentPage() {
   const router = useRouter();
 
-  // seçilen öğrenci ve paket ayrı
+  // seçilen öğrenci ve paket
   const [student, setStudent] = useState<StudentLite | null>(null);
   const [pkg, setPkg] = useState<PackageLite | null>(null);
 
   const [studentPickerOpen, setStudentPickerOpen] = useState(false);
   const [packagePickerOpen, setPackagePickerOpen] = useState(false);
 
+  // form alanları (sade)
   const [form, setForm] = useState<any>({
     method: "card" as PaymentMethod,
     note: "",
   });
-  const [busy, setBusy] = useState(false);
 
-  // Preview state for renewal logic
-  const [lastEnd, setLastEnd] = useState<string | null>(null);           // YYYY-MM-DD of previous period_end
-  const [previewStart, setPreviewStart] = useState<string | null>(null); // computed: lastEnd + 7 days
-  const [previewEnd, setPreviewEnd] = useState<string | null>(null);     // computed from pkg.duration_days: start + (duration_days - 7)
-  // Registration history state
-  const [history, setHistory] = useState<any[]>([]);
-  const [loadingHistory, setLoadingHistory] = useState(false);
+  // dönem tarihleri (yalnızca ödemeye dair – yenileme mantığı yok)
+  const [startDate, setStartDate] = useState<string>("");       // İlk ders (kullanıcı belirler)
+  const [endDate, setEndDate] = useState<string | null>(null);  // Otomatik hesap
+
+  const [busy, setBusy] = useState(false);
 
   function toYMD(d: Date) {
     return d.toISOString().slice(0, 10);
@@ -55,43 +53,26 @@ export default function NewPaymentPage() {
     return toYMD(d);
   }
 
-  async function loadLastEnd(studentId: string) {
-    setLastEnd(null);
-    setHistory([]);
-    setLoadingHistory(true);
-    try {
-      const res = await fetch(`/api/admin/studentpackages/last?student_id=${encodeURIComponent(studentId)}&history=1`, { cache: "no-store" });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j?.error || "Son kayıt alınamadı");
-      const end = j?.period_end as string | null;
-      setLastEnd(end || null);
-      setHistory(Array.isArray(j?.history) ? j.history : []);
-    } catch {
-      setLastEnd(null);
-      setHistory([]);
-    } finally {
-      setLoadingHistory(false);
-    }
-  }
-
+  // start veya paket değişince "son ders"i hesapla
   useEffect(() => {
-    if (lastEnd && pkg?.duration_days) {
-      const start = addDaysStr(lastEnd, 0); // 1 hafta ileri değil, 1 hafta daha erken (tüm tarihler 1 hafta geri çekildi)
-      // 1 ay = 4 ders → ilk dersten 3 hafta sonra son ders => duration_days - 7
-      const end = addDaysStr(start, Math.max(0, (pkg.duration_days || 0) - 7));
-      setPreviewStart(start);
-      setPreviewEnd(end);
-    } else {
-      setPreviewStart(null);
-      setPreviewEnd(null);
+    if (!startDate || !pkg?.duration_days) {
+      setEndDate(null);
+      return;
     }
-  }, [lastEnd, pkg?.duration_days]);
+    // 1/3/6 aylık mantık: 1 ay = 4 ders → son ders = ilk + (hafta*7 - 1)
+    const end = addDaysStr(startDate, Math.max(0, (pkg.duration_days || 0) - 7));
+    setEndDate(end);
+  }, [startDate, pkg?.duration_days]);
 
   async function save() {
     if (!student) return alert("Öğrenciyi seç.");
     if (!pkg) return alert("Paketi seç.");
+    if (!startDate) return alert("İlk ders tarihini seç.");
+
     setBusy(true);
     try {
+      // Mevcut backend akışına uyuyoruz: renew endpoint’i
+      // Not: Backend gerekli gördüğünde tarihleri override edebilir.
       const res = await fetch("/api/admin/studentpackages/renew", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -100,17 +81,18 @@ export default function NewPaymentPage() {
           package_id: pkg.id,
           method: form.method,
           note: form.note || null,
-          // isteğe bağlı: frontend hesapladığı tarihler, backend doğrular/override eder
+          // sadece ödeme/period bilgisi – SMS/uyarı vs yok
           preview: {
-            period_start: previewStart,
-            period_end: previewEnd,
-          }
+            period_start: startDate,
+            period_end: endDate,
+          },
+          // opsiyonel: ödemeyi "paid" kapatıyoruz (sen istersen burada 'pending' de gönderebilirsin)
+          status: "paid",
         }),
       });
       const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j?.error || "Kayıt yenileme başarısız");
-      // Beklenti: backend yeni student_package oluşturur (öncekini pasife çeker),
-      // payment sayısını artırır ve tarihlerle döner.
+      if (!res.ok) throw new Error(j?.error || "Kayıt/ödeme oluşturulamadı");
+
       router.push("/admin/payments");
     } catch (e: any) {
       alert(e.message || "Hata");
@@ -123,8 +105,10 @@ export default function NewPaymentPage() {
     <div className="mx-auto max-w-2xl space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Yeni Kayıt</h1>
-          <p className="text-sm text-gray-700">Öğrenci + paket seç; yöntem ve not ekle. Tarihler, önceki dönemin bitişine göre 1 hafta geri çekilerek hesaplanır.</p>
+          <h1 className="text-2xl font-bold text-gray-900">Yeni Kayıt / Ödeme</h1>
+          <p className="text-sm text-gray-700">
+            Öğrenci + paket seç; ilk dersi belirle. Son ders otomatik hesaplanır. Yöntemi ve notu ekleyip kaydet.
+          </p>
         </div>
         <Link
           href="/admin/payments"
@@ -157,7 +141,7 @@ export default function NewPaymentPage() {
               </button>
               {student && (
                 <button
-                  onClick={() => setStudent(null)}
+                  onClick={() => { setStudent(null); setStartDate(""); setEndDate(null); }}
                   className="rounded-lg border border-gray-200 bg-white px-2 py-2 text-xs text-gray-700 hover:bg-gray-50"
                 >
                   Temizle
@@ -185,7 +169,7 @@ export default function NewPaymentPage() {
               </button>
               {pkg && (
                 <button
-                  onClick={() => setPkg(null)}
+                  onClick={() => { setPkg(null); setEndDate(null); }}
                   className="rounded-lg border border-gray-200 bg-white px-2 py-2 text-xs text-gray-700 hover:bg-gray-50"
                 >
                   Temizle
@@ -195,57 +179,25 @@ export default function NewPaymentPage() {
             {!student && <div className="mt-2 text-xs text-amber-700">Paket aramak için önce öğrenciyi seç.</div>}
           </Row>
 
-          {/* Yenileme Önizleme */}
-          {student && pkg && (
-            <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-800">
-              <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-                <div><span className="font-semibold">Önceki Bitiş:</span> {lastEnd || "—"}</div>
-                <div><span className="font-semibold">Yeni İlk Ders:</span> {previewStart || "—"}</div>
-                <div><span className="font-semibold">Yeni Son Ders:</span> {previewEnd || "—"}</div>
-              </div>
-              {!lastEnd && <div className="mt-1 text-xs text-amber-700">Bu öğrenci için önceki kayıt bulunamadı. İlk ders, bugünden sonraki ilk uygun hafta gününe backend belirlemeli.</div>}
-            </div>
-          )}
-
-          {/* Kayıt Geçmişi */}
-          {student && (
-            <div className="mt-4 rounded-lg border border-gray-200 bg-white p-3 text-sm text-gray-800">
-              <div className="mb-2 flex items-center justify-between">
-                <div className="font-semibold">Kayıt Geçmişi</div>
-                {loadingHistory && <div className="text-xs text-gray-500">Yükleniyor…</div>}
-              </div>
-              {history.length === 0 ? (
-                <div className="text-gray-600 text-sm">Geçmiş kayıt bulunamadı.</div>
-              ) : (
-                <div className="overflow-auto">
-                  <table className="min-w-full text-sm">
-                    <thead className="bg-gray-50 text-left font-semibold text-gray-800">
-                      <tr>
-                        <th className="px-3 py-2">Başlangıç</th>
-                        <th className="px-3 py-2">Bitiş</th>
-                        <th className="px-3 py-2">Paket</th>
-                        <th className="px-3 py-2">Seans</th>
-                        <th className="px-3 py-2">Ücret</th>
-                        <th className="px-3 py-2">Durum</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {history.map((h:any) => (
-                        <tr key={h.id} className="border-t">
-                          <td className="px-3 py-2">{h.start_date || "—"}</td>
-                          <td className="px-3 py-2">{h.end_date || "—"}</td>
-                          <td className="px-3 py-2">{h.package_title || h.package_code || h.package_id || "—"}</td>
-                          <td className="px-3 py-2">{typeof h.sessions_total === 'number' ? h.sessions_total : (h.duration_days ? Math.round(h.duration_days/7) : "—")}</td>
-                          <td className="px-3 py-2">{h.price_at_purchase ? `${h.price_at_purchase} ₺` : "—"}</td>
-                          <td className="px-3 py-2">{h.status || "—"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
+          {/* Dönem tarihleri */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Row label="İlk Ders *">
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
+              />
+            </Row>
+            <Row label="Son Ders (otomatik)">
+              <input
+                readOnly
+                value={endDate || ""}
+                placeholder="Paket seçince hesaplanır"
+                className="w-full cursor-not-allowed rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900"
+              />
+            </Row>
+          </div>
 
           {/* Metot */}
           <Row label="Metot *">
@@ -260,6 +212,7 @@ export default function NewPaymentPage() {
             </select>
           </Row>
 
+          {/* Not */}
           <Row label="Not">
             <textarea
               rows={3}
@@ -278,11 +231,11 @@ export default function NewPaymentPage() {
             İptal
           </Link>
           <button
-            disabled={busy || !student || !pkg}
+            disabled={busy || !student || !pkg || !startDate}
             onClick={save}
             className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
           >
-            {busy ? "Kaydediliyor…" : "Kaydı Yenile / Oluştur"}
+            {busy ? "Kaydediliyor…" : "Kaydet"}
           </button>
         </div>
       </div>
@@ -290,10 +243,8 @@ export default function NewPaymentPage() {
       {studentPickerOpen && (
         <StudentPicker
           onClose={() => setStudentPickerOpen(false)}
-          onPick={async (x) => {
+          onPick={(x) => {
             setStudent(x);
-            setPkg(null); // öğrenci değişirse paketi sıfırla
-            await loadLastEnd(x.id);
             setStudentPickerOpen(false);
           }}
         />
@@ -323,7 +274,7 @@ function Row({ label, children }: any) {
   );
 }
 
-/** Basit öğrenci seçici: /api/admin/students/list */
+/** Öğrenci seçici: /api/admin/students/list */
 function StudentPicker({ onClose, onPick }: { onClose: () => void; onPick: (x: StudentLite) => void }) {
   const API = "/api/admin/students/list";
   const [items, setItems] = useState<StudentLite[]>([]);
@@ -409,9 +360,9 @@ function StudentPicker({ onClose, onPick }: { onClose: () => void; onPick: (x: S
   );
 }
 
-/** Paket seçici: /api/admin/packages/list */
+/** Paket seçici: /api/packages/list */
 function PackagePicker({ onClose, onPick }: { onClose: () => void; onPick: (x: PackageLite) => void }) {
-  const API = "/api/admin/packages/list";
+  const API = "/api/packages/list";
   const [items, setItems] = useState<PackageLite[]>([]);
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
@@ -424,9 +375,26 @@ function PackagePicker({ onClose, onPick }: { onClose: () => void; onPick: (x: P
     const res = await fetch(url, { cache: "no-store" });
     const j = await res.json().catch(() => ({}));
     setLoading(false);
+
     if (!res.ok) return setErr(j?.error || "Paketler alınamadı");
-    const rows = (j.items || []) as PackageLite[];
-    rows.sort((a, b) => (a.display_name || "").localeCompare(b.display_name || "", "tr"));
+
+    // /api/packages/list hem dizi hem {items:[]} dönebilsin diye esnekçe parse edelim
+    const raw = Array.isArray(j) ? j : (j.items || []);
+    const rows = (raw || []).map((x: any) => {
+      const weeks =
+        (typeof x.valid_weeks === "number" && x.valid_weeks > 0 ? x.valid_weeks : null) ??
+        (typeof x.total_sessions === "number" && x.total_sessions > 0 ? x.total_sessions : null) ??
+        4;
+      return {
+        id: x.id,
+        display_name: x.title || x.code || "Paket",
+        duration_days: weeks * 7,
+        price: x.total_price ? Number(x.total_price) : null,
+        is_active: typeof x.is_active === "boolean" ? x.is_active : true,
+      } as PackageLite;
+    }).filter((p: PackageLite) => p.is_active !== false);
+
+    rows.sort((a: { display_name: any; }, b: { display_name: any; }) => (a.display_name || "").localeCompare(b.display_name || "", "tr"));
     setItems(rows);
   }
 
@@ -473,7 +441,7 @@ function PackagePicker({ onClose, onPick }: { onClose: () => void; onPick: (x: P
                 <tr key={x.id} className="border-t">
                   <td className="px-3 py-2">{x.display_name}</td>
                   <td className="px-3 py-2">{x.duration_days ? `${x.duration_days} gün` : "—"}</td>
-                  <td className="px-3 py-2">{typeof (x as any).price === "number" ? `${(x as any).price} ₺` : "—"}</td>
+                  <td className="px-3 py-2">{typeof x.price === "number" ? `${x.price} ₺` : "—"}</td>
                   <td className="px-3 py-2">
                     <button
                       onClick={() => onPick(x)}

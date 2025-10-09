@@ -15,13 +15,20 @@ type Payment = {
   method: "card" | "cash" | "transfer";
   status: "paid" | "pending" | "failed" | "refunded";
   paid_at: string | null;      // ISO veya null
-  period_start: string | null; // ISO (date) – postpaid senaryosu için
-  period_end: string | null;   // ISO (date) – postpaid ise ödeme günü (VADE)
+  period_start: string | null; // ISO (date)
+  period_end: string | null;   // ISO (date)
   note: string | null;
 };
 
 /** Filtre select'i için: öğrenci paketi (id=student_package_id) */
-type Student = { id: string; student_name: string; package_name?: string | null; student_id?: string | null };
+type Student = {
+  id: string; // student_package_id
+  student_name: string;
+  package_name?: string | null;
+  student_id?: string | null;
+  valid_weeks?: number | null;
+  sessions_total?: number | null;
+};
 
 const money = (n: number) =>
   new Intl.NumberFormat("tr-TR", { style: "currency", currency: "TRY", maximumFractionDigits: 2 }).format(n);
@@ -40,23 +47,7 @@ const METHOD_LABEL: Record<Payment["method"], string> = {
 };
 
 // ---- yardımcılar ----
-const startOfDay = (d: Date) => { const x = new Date(d); x.setHours(0,0,0,0); return x; };
 const fmtDate = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString("tr-TR") : "—");
-
-/**
- * Kayıt bitişi: varsayılan olarak period_end gösterilir.
- * period_end yoksa fallback: period_start + 4 hafta (1 aylık paket için).
- * (Backende eklediğimiz trigger ile period_end zaten doğru hesaplanıyor.)
- */
-function calcRegisterEnd(p: Payment): Date | null {
-  if (p.period_end) return new Date(p.period_end);
-  if (p.period_start) {
-    const d = new Date(p.period_start);
-    d.setDate(d.getDate() + 7 * 4 - 1); // 1 aylık=4 ders → ilk dersten 3 hafta sonra son ders (toplam 4 ders günü)
-    return d;
-  }
-  return null;
-}
 
 export default function PaymentsPage() {
   const [items, setItems] = useState<Payment[]>([]);
@@ -66,35 +57,21 @@ export default function PaymentsPage() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // paket/öğrenci map'leri + geçmiş UI state'leri
-  const [pkgBySpId, setPkgBySpId] = useState<Record<string, string>>({});
-  const [studentIdBySpId, setStudentIdBySpId] = useState<Record<string, string>>({});
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({}); // paymentId -> expanded
-  const [historyCache, setHistoryCache] = useState<Record<string, any[]>>({}); // studentId -> history[]
-  const [historyLoading, setHistoryLoading] = useState<Record<string, boolean>>({});
+  // paket/öğrenci lookup
+  const [pkgNameBySpId, setPkgNameBySpId] = useState<Record<string, string>>({});
+  const [weeksBySpId, setWeeksBySpId] = useState<Record<string, number>>({});
 
   // filtreler
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<string>("");
   const [method, setMethod] = useState<string>("");
-  const [studentId, setStudentId] = useState<string>(""); // burada id = student_package_id
+  const [studentPackageId, setStudentPackageId] = useState<string>("");
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
   const [page, setPage] = useState(1);
   const pageSize = 25;
 
-  // seçim / toplu aksiyon
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const toggleSelect = (id: string) =>
-    setSelected((prev) => {
-      const n = new Set(prev);
-      n.has(id) ? n.delete(id) : n.add(id);
-      return n;
-    });
-  const selectAllOnPage = () => setSelected(new Set(items.map((x) => x.id)));
-  const clearSelection = () => setSelected(new Set());
-
-  // sadece DÜZENLE modalı
+  // DÜZENLE modalı
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Payment | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -111,11 +88,21 @@ export default function PaymentsPage() {
   });
   const [busy, setBusy] = useState(false);
 
+  // Son ders hesabı (paket hafta sayısına göre)
+  const calcRegisterEnd = (p: Payment): Date | null => {
+    if (p.period_end) return new Date(p.period_end);
+    if (!p.period_start) return null;
+    const weeks = weeksBySpId[p.student_package_id] || 4; // fallback 4 hafta
+    const start = new Date(p.period_start);
+    start.setDate(start.getDate() + (weeks * 7) - 1);
+    return start;
+  };
+
   function openEdit(p: Payment) {
     setEditing(p);
     setPicked({
       student_name: p.student_name || "—",
-      package_name: pkgBySpId[p.student_package_id] || null,
+      package_name: pkgNameBySpId[p.student_package_id] || null,
       student_package_id: p.student_package_id,
     });
     setForm({
@@ -135,26 +122,29 @@ export default function PaymentsPage() {
   async function fetchStudents() {
     const res = await fetch("/api/admin/studentpackages/list", { cache: "no-store" });
     const j = await res.json().catch(() => ({}));
-    if (res.ok) {
-      const arr = (j.items ?? []).map((x: any) => ({
-        id: x.id, // student_package_id
-        student_name: x.student_name ?? "İsimsiz",
-        package_name: x.package_name ?? null,
-        student_id: x.student_id ?? null,
-      })) as Student[];
-      arr.sort((a, b) => a.student_name.localeCompare(b.student_name, "tr"));
-      setStudents(arr);
+    if (!res.ok) return;
+    const arr = (j.items ?? []).map((x: any) => ({
+      id: x.id, // student_package_id
+      student_name: x.student_name ?? "İsimsiz",
+      package_name: x.package_name ?? null,
+      student_id: x.student_id ?? null,
+      valid_weeks: typeof x.valid_weeks === "number" ? x.valid_weeks : null,
+      sessions_total: typeof x.sessions_total === "number" ? x.sessions_total : null,
+    })) as Student[];
 
-      // hızlı lookup map'leri
-      const pkgMap: Record<string, string> = {};
-      const sidMap: Record<string, string> = {};
-      for (const s of arr) {
-        if (s.id && s.package_name) pkgMap[s.id] = s.package_name;
-        if (s.id && s.student_id) sidMap[s.id] = s.student_id;
-      }
-      setPkgBySpId(pkgMap);
-      setStudentIdBySpId(sidMap);
+    arr.sort((a, b) => a.student_name.localeCompare(b.student_name, "tr"));
+    setStudents(arr);
+
+    // lookup map'ler
+    const nameMap: Record<string, string> = {};
+    const weekMap: Record<string, number> = {};
+    for (const s of arr) {
+      if (s.id && s.package_name) nameMap[s.id] = s.package_name;
+      const w = (s.valid_weeks && s.valid_weeks > 0 ? s.valid_weeks : (s.sessions_total && s.sessions_total > 0 ? s.sessions_total : 4));
+      if (s.id) weekMap[s.id] = w;
     }
+    setPkgNameBySpId(nameMap);
+    setWeeksBySpId(weekMap);
   }
 
   /** Ödemeleri getir (filtreler ile) */
@@ -166,7 +156,7 @@ export default function PaymentsPage() {
       if (q.trim()) params.set("q", q.trim());
       if (status) params.set("status", status);
       if (method) params.set("method", method);
-      if (studentId) params.set("studentPackageId", studentId);
+      if (studentPackageId) params.set("studentPackageId", studentPackageId);
       if (dateFrom) params.set("date_from", dateFrom);
       if (dateTo) params.set("date_to", dateTo);
       params.set("page", String(page));
@@ -176,10 +166,10 @@ export default function PaymentsPage() {
       const res = await fetch(url, { cache: "no-store" });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j?.error || "Ödemeler alınamadı");
+
       setItems(j.items || []);
       setTotal(j.total || 0);
       setSummary(j.summary || null);
-      clearSelection();
     } catch (e: any) {
       setErr(e.message || "Hata");
     } finally {
@@ -187,12 +177,8 @@ export default function PaymentsPage() {
     }
   }
 
-  useEffect(() => {
-    fetchStudents();
-  }, []);
-  useEffect(() => {
-    load();
-  }, [q, status, method, studentId, dateFrom, dateTo, page]);
+  useEffect(() => { fetchStudents(); }, []);
+  useEffect(() => { load(); }, [q, status, method, studentPackageId, dateFrom, dateTo, page]);
 
   /** SADECE UPDATE */
   async function save() {
@@ -234,7 +220,7 @@ export default function PaymentsPage() {
     await load();
   }
 
-  /** Sil – query fallback eklendi */
+  /** Sil */
   async function remove(id: string) {
     if (!confirm("Ödemeyi silmek istiyor musun?")) return;
 
@@ -260,131 +246,23 @@ export default function PaymentsPage() {
     await load();
   }
 
-  // Kayıt durum kümeleri (period_end'e göre)
-  const { expired, upcoming, active } = useMemo(() => {
-    const now = new Date();
-    const list = (items || []).map((p) => {
-      const end = calcRegisterEnd(p);
-      return { p, end };
-    }).filter(x => x.end !== null) as { p: Payment; end: Date }[];
-
-    const diffDays = (a: Date, b: Date) => Math.round((startOfDay(a).getTime() - startOfDay(b).getTime()) / 86400000);
-
-    const expired = list
-      .filter((x) => diffDays(x.end, now) < 0) // geçmiş
-      .sort((a, b) => a.end.getTime() - b.end.getTime());
-
-    const upcoming = list
-      .filter((x) => {
-        const d = diffDays(x.end, now);
-        return d >= 0 && d <= 7; // 7 gün içinde yaklaşan kayıt yenileme
-      })
-      .sort((a, b) => a.end.getTime() - b.end.getTime());
-
-    const active = list
-      .filter((x) => diffDays(x.end, now) > 7) // 7 günden fazla zamanı olanlar
-      .sort((a, b) => a.end.getTime() - b.end.getTime());
-
-    return { expired, upcoming, active };
-  }, [items]);
-
-  /** Tek kişiye SMS */
-  async function remindOne(p: Payment, next_due?: Date | null) {
-    const defaultMsg = `Merhaba ${p.parent_name ?? ""}, ${p.student_name ?? "öğrenci"} için ödeme hatırlatmasıdır. Sonraki tarih: ${
-      next_due ? next_due.toLocaleDateString("tr-TR") : "—"
-    }. Sorunuz varsa bize yazabilirsiniz.`;
-    const custom = prompt("SMS içeriği:", defaultMsg);
-    if (custom === null) return;
-
-    const res = await fetch("/api/admin/payments/remind", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ paymentId: p.id, customMessage: custom }),
-    });
-    const raw = await res.text();
-    try {
-      const j = JSON.parse(raw);
-      if (!res.ok) return alert(j?.error || raw);
-    } catch {
-      if (!res.ok) return alert(raw);
-    }
-    alert("Hatırlatma gönderildi.");
-  }
-
-  /** Seçili kişilere toplu SMS */
-  async function remindSelected() {
-    if (selected.size === 0) return alert("Seçili ödeme yok.");
-    const targets = items.filter((p) => selected.has(p.id));
-    const defaultMsg = `Merhaba, ${targets.length} kişi için yenileme hatırlatması gönderilecektir.`;
-    const custom = prompt("SMS içeriği (tümüne):", defaultMsg);
-    if (custom === null) return;
-
-    let ok = 0, fail = 0;
-    for (const p of targets) {
-      const res = await fetch("/api/admin/payments/remind", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paymentId: p.id, customMessage: custom }),
-      });
-      if (res.ok) ok++; else fail++;
-    }
-    alert(`SMS tamamlandı. Başarılı: ${ok}, Hatalı: ${fail}`);
-  }
-
   const pages = Math.max(1, Math.ceil(total / pageSize));
-
-  // Öğrenci geçmişini yükleme helper'ı
-  async function loadHistoryFor(studentId: string) {
-    if (!studentId) return;
-    setHistoryLoading((m) => ({ ...m, [studentId]: true }));
-    try {
-      const res = await fetch(`/api/admin/studentpackages/last?student_id=${encodeURIComponent(studentId)}&history=1`, { cache: "no-store" });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j?.error || "Geçmiş alınamadı");
-      const hist = Array.isArray(j?.history) ? j.history : [];
-      setHistoryCache((m) => ({ ...m, [studentId]: hist }));
-    } catch {
-      setHistoryCache((m) => ({ ...m, [studentId]: [] }));
-    } finally {
-      setHistoryLoading((m) => ({ ...m, [studentId]: false }));
-    }
-  }
 
   return (
     <div className="space-y-6">
-      {/* Başlık + toplu aksiyonlar */}
+      {/* Başlık */}
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Ödemeler</h1>
-          <p className="text-sm text-gray-700">Hasılatı ve ödeme geçmişini takip et.</p>
+          <p className="text-sm text-gray-700">Sadece ödeme kalemleri. Kayıt/yenileme işleri ayrı ekranda.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {selected.size > 0 && (
-            <>
-              <span className="rounded-lg bg-gray-100 px-2 py-1 text-xs text-gray-900">
-                Seçili: <b>{selected.size}</b>
-              </span>
-              <button
-                onClick={remindSelected}
-                className="rounded-lg bg-black px-3 py-2 text-sm font-medium text-white hover:opacity-90"
-              >
-                Seçililere SMS
-              </button>
-              <button
-                onClick={clearSelection}
-                className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
-              >
-                Temizle
-              </button>
-            </>
-          )}
           <button
             onClick={load}
             className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 hover:bg-gray-50"
           >
             Yenile
           </button>
-          {/* Yeni ödeme artık ayrı sayfa */}
           <Link
             href="/admin/payments/new"
             className="rounded-lg bg-black px-3 py-2 text-sm font-medium text-white hover:opacity-90"
@@ -395,104 +273,6 @@ export default function PaymentsPage() {
       </div>
 
       {err && <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-rose-800">{err}</div>}
-
-      {/* Geçmiş Kayıtlar (bitiş tarihi geçmiş) */}
-      {expired.length > 0 && (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 shadow-sm">
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-rose-900">Geçmiş Kayıtlar (bitiş tarihi geçmiş)</h2>
-            <span className="rounded-lg bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-900">
-              {expired.length} kişi
-            </span>
-          </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            {expired.map(({ p, end }) => (
-              <div key={p.id} className="rounded-xl border border-rose-200 bg-white p-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-semibold text-gray-900">{p.student_name || "—"}</div>
-                    <div className="text-xs text-gray-700">
-                      {p.parent_name} • {p.parent_phone_e164}
-                    </div>
-                    <div className="mt-0.5 text-xs text-gray-600">
-                      Paket: {pkgBySpId[p.student_package_id] || "—"}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xs text-gray-700">Bitiş</div>
-                    <div className="text-sm font-semibold text-rose-900">
-                      {end ? end.toLocaleDateString("tr-TR") : "—"}
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-2 flex gap-2">
-                  <button
-                    onClick={() => remindOne(p, end)}
-                    className="rounded-md bg-black px-2 py-1 text-xs font-medium text-white hover:opacity-90"
-                  >
-                    Yenileme Hatırlat (SMS)
-                  </button>
-                  <button
-                    onClick={() => openEdit(p)}
-                    className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-900 hover:bg-gray-50"
-                  >
-                    Düzenle
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Yaklaşan Kayıtlar (7 gün) */}
-      {upcoming.length > 0 && (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-amber-900">Yaklaşan Kayıtlar (7 gün)</h2>
-            <span className="rounded-lg bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">
-              {upcoming.length} kişi
-            </span>
-          </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            {upcoming.map(({ p, end }) => (
-              <div key={p.id} className="rounded-xl border border-amber-200 bg-white p-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-semibold text-gray-900">{p.student_name || "—"}</div>
-                    <div className="text-xs text-gray-700">
-                      {p.parent_name} • {p.parent_phone_e164}
-                    </div>
-                    <div className="mt-0.5 text-xs text-gray-600">
-                      Paket: {pkgBySpId[p.student_package_id] || "—"}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xs text-gray-700">Bitiş</div>
-                    <div className="text-sm font-semibold text-gray-900">
-                      {end ? end.toLocaleDateString("tr-TR") : "—"}
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-2 flex gap-2">
-                  <button
-                    onClick={() => remindOne(p, end)}
-                    className="rounded-md bg-black px-2 py-1 text-xs font-medium text-white hover:opacity-90"
-                  >
-                    Yenileme Hatırlat (SMS)
-                  </button>
-                  <button
-                    onClick={() => openEdit(p)}
-                    className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-900 hover:bg-gray-50"
-                  >
-                    Düzenle
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Özet kutuları */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
@@ -560,10 +340,10 @@ export default function PaymentsPage() {
           </select>
 
           <select
-            value={studentId}
+            value={studentPackageId}
             onChange={(e) => {
               setPage(1);
-              setStudentId(e.target.value);
+              setStudentPackageId(e.target.value);
             }}
             className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-black focus:ring-black/20"
           >
@@ -601,14 +381,6 @@ export default function PaymentsPage() {
         <table className="min-w-full">
           <thead className="bg-gray-50 text-left text-[12px] font-semibold uppercase tracking-wide text-gray-800">
             <tr>
-              <th className="px-4 py-3">
-                <button
-                  onClick={selectAllOnPage}
-                  className="rounded border border-gray-300 px-2 py-1 text-[11px] text-gray-900 hover:bg-gray-100"
-                >
-                  Tümü
-                </button>
-              </th>
               <th className="px-4 py-3">Tarih</th>
               <th className="px-4 py-3">Öğrenci</th>
               <th className="px-4 py-3">Tutar</th>
@@ -622,23 +394,16 @@ export default function PaymentsPage() {
           <tbody className="text-[15px] text-gray-900">
             {loading && (
               <tr>
-                <td colSpan={9} className="px-4 py-6 text-center text-gray-700">
+                <td colSpan={8} className="px-4 py-6 text-center text-gray-700">
                   Yükleniyor…
                 </td>
               </tr>
             )}
             {!loading &&
-              items.map((p) => (
-                <React.Fragment key={p.id}>
-                  <tr className="border-t border-gray-100">
-                    <td className="px-4 py-3">
-                      <input
-                        type="checkbox"
-                        checked={selected.has(p.id)}
-                        onChange={() => toggleSelect(p.id)}
-                        className="size-4 accent-black"
-                      />
-                    </td>
+              items.map((p) => {
+                const end = calcRegisterEnd(p);
+                return (
+                  <tr key={p.id} className="border-t border-gray-100">
                     <td className="px-4 py-3">{p.paid_at ? new Date(p.paid_at).toLocaleString("tr-TR") : "—"}</td>
                     <td className="px-4 py-3">
                       <div className="font-semibold text-gray-900">{p.student_name || "—"}</div>
@@ -646,7 +411,7 @@ export default function PaymentsPage() {
                         {p.parent_name} • {p.parent_phone_e164}
                       </div>
                       <div className="mt-0.5 text-xs text-gray-600">
-                        Paket: {pkgBySpId[p.student_package_id] || "—"}
+                        Paket: {pkgNameBySpId[p.student_package_id] || "—"}
                       </div>
                     </td>
                     <td className="px-4 py-3 font-semibold">{money(Number(p.amount || 0))}</td>
@@ -671,7 +436,7 @@ export default function PaymentsPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      {fmtDate(p.period_start)} – {(() => { const end = calcRegisterEnd(p); return end ? end.toLocaleDateString("tr-TR") : "—"; })()}
+                      {fmtDate(p.period_start)} – {end ? end.toLocaleDateString("tr-TR") : "—"}
                     </td>
                     <td className="px-4 py-3">{p.note || "—"}</td>
                     <td className="px-4 py-3">
@@ -683,91 +448,19 @@ export default function PaymentsPage() {
                           Düzenle
                         </button>
                         <button
-                          onClick={() => {
-                            const end = calcRegisterEnd(p);
-                            remindOne(p, end);
-                          }}
-                          className="rounded-md bg-black px-2 py-1 text-xs font-medium text-white hover:opacity-90"
-                        >
-                          SMS
-                        </button>
-                        <button
                           onClick={() => remove(p.id)}
                           className="rounded-md border border-rose-200 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
                         >
                           Sil
                         </button>
-                        <button
-                          onClick={() => setExpanded((m) => ({ ...m, [p.id]: !m[p.id] }))}
-                          className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-900 hover:bg-gray-50"
-                        >
-                          {expanded[p.id] ? "Gizle" : "Geçmiş"}
-                        </button>
                       </div>
                     </td>
                   </tr>
-
-                  {expanded[p.id] && (
-                    <tr className="bg-gray-50/50">
-                      <td colSpan={9} className="px-4 py-3">
-                        {(() => {
-                          const sid = studentIdBySpId[p.student_package_id];
-                          if (!sid) return <div className="text-sm text-gray-700">Öğrenci kimliği bulunamadı.</div>;
-                          const hist = historyCache[sid];
-                          const loading = !!historyLoading[sid];
-                          if (!hist && !loading) {
-                            loadHistoryFor(sid);
-                          }
-                          return (
-                            <div className="text-sm text-gray-800">
-                              <div className="mb-2 flex items-center gap-2">
-                                <span className="font-semibold">Kayıt Geçmişi</span>
-                                {loading && <span className="text-xs text-gray-500">Yükleniyor…</span>}
-                              </div>
-                              {Array.isArray(hist) && hist.length > 0 ? (
-                                <div className="overflow-auto">
-                                  <table className="min-w-full text-xs">
-                                    <thead className="bg-white text-left font-semibold text-gray-800">
-                                      <tr>
-                                        <th className="px-2 py-1">Başlangıç</th>
-                                        <th className="px-2 py-1">Bitiş</th>
-                                        <th className="px-2 py-1">Paket</th>
-                                        <th className="px-2 py-1">Seans</th>
-                                        <th className="px-2 py-1">Ücret</th>
-                                        <th className="px-2 py-1">Durum</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {hist.map((h: any) => (
-                                        <tr key={h.id} className="border-t">
-                                          <td className="px-2 py-1">{h.start_date || "—"}</td>
-                                          <td className="px-2 py-1">{h.end_date || "—"}</td>
-                                          <td className="px-2 py-1">{h.package_title || h.package_code || h.package_id || "—"}</td>
-                                          <td className="px-2 py-1">{typeof h.sessions_total === 'number' ? h.sessions_total : (h.duration_days ? Math.round(h.duration_days/7) : "—")}</td>
-                                          <td className="px-2 py-1">{h.price_at_purchase ? `${h.price_at_purchase} ₺` : "—"}</td>
-                                          <td className="px-2 py-1">{h.status || "—"}</td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                  <div className="mt-2 text-xs text-gray-600">
-                                    İlk Kayıt: <b>{hist[0]?.start_date || "—"}</b> • Toplam Yenileme: <b>{Math.max(0, hist.length - 1)}</b>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="text-sm text-gray-700">Geçmiş bulunamadı.</div>
-                              )}
-                            </div>
-                          );
-                        })()}
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              ))}
+                );
+              })}
             {!loading && items.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-4 py-10 text-center text-gray-700">
+                <td colSpan={8} className="px-4 py-10 text-center text-gray-700">
                   Kayıt yok.
                 </td>
               </tr>
@@ -882,7 +575,7 @@ export default function PaymentsPage() {
                   className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
                 />
               </Row>
-              <Row label="Dönem Bitiş (vade)">
+              <Row label="Dönem Bitiş">
                 <input
                   type="date"
                   value={form.period_end}
@@ -991,7 +684,7 @@ function Row({ label, children }: any) {
   );
 }
 
-/** Öğrenci seçici – tanitim_dersi_ogrencileri tablosundan çeker */
+/** Öğrenci seçici – studentpackages/list’ten çeker */
 function StudentPicker({ onClose, onPick }: { onClose: () => void; onPick: (x: any) => void }) {
   const [items, setItems] = useState<any[]>([]);
   const [q, setQ] = useState("");
