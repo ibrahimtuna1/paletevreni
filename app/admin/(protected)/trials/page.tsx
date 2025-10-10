@@ -64,12 +64,17 @@ export default function TrialsPage() {
   const [savingId, setSavingId] = useState<string | null>(null); // note save spinner
 
   // Satın alma modal state
-  const [sellOpen, setSellOpen] = useState(false);
-  const [sellTrialId, setSellTrialId] = useState<string | null>(null);
-  const [packages, setPackages] = useState<Package[]>([]);
-  const [pkgId, setPkgId] = useState<string>("");
-  const [periodStart, setPeriodStart] = useState<string>(() => ymd(new Date()));
-  const [selling, setSelling] = useState(false);
+  // Satın alma modal state'leri (SADELEŞTİRİLDİ)
+const [sellOpen, setSellOpen] = useState(false);
+const [sellTrial, setSellTrial] = useState<Row | null>(null); // Artık tüm satır verisini tutuyoruz
+const [packages, setPackages] = useState<Package[]>([]);
+const [sellForm, setSellForm] = useState({
+    packageId: "",
+    paidAmount: "",
+    firstLessonDate: ymd(new Date()),
+    method: "havale_eft" // Veritabanındaki doğru ENUM değeriyle başlıyor
+});
+const [selling, setSelling] = useState(false);
 
   // *** Manuel başvuru modal state (yeni) ***
   const [manualOpen, setManualOpen] = useState(false);
@@ -121,7 +126,6 @@ export default function TrialsPage() {
   useEffect(() => {
     // aktif gün değişince manuel formun tarihini de günün 20:00’ına çek
     setMWhen(`${activeDay}T20:00`);
-    setPeriodStart(activeDay);
     load();
     // msgText resetlemek istersen:
     // setMsgText(""); setMsgOpen(false);
@@ -144,43 +148,60 @@ export default function TrialsPage() {
     return true;
   }
 
-  async function openSellModal(row: Row) {
-    setSellTrialId(row.id);
+  function openSellModal(row: Row) {
+    setSellTrial(row);
     setSellOpen(true);
-    // paketleri bir kez çek
+    
+    // Formu sıfırla ve ilk ders tarihini aktif güne ayarla
+    setSellForm({
+        packageId: "",
+        paidAmount: "",
+        firstLessonDate: activeDay, // İlk dersi, seçili tanıtım dersi günü olarak varsay
+        method: "havale_eft"
+    });
+
     if (packages.length === 0) {
-      const res = await fetch("/api/admin/packages", { cache: "no-store" });
-      const j = await res.json().catch(() => ({}));
-      if (res.ok) setPackages((j?.items ?? []) as Package[]);
-      else alert(j?.error || "Paket listesi getirilemedi");
+        fetch("/api/packages/list", { cache: "no-store" })
+            .then(res => res.json())
+            .then(j => setPackages((j ?? []) as Package[]))
+            .catch(e => alert("Paketler yüklenemedi."));
     }
-  }
+}
 
   async function confirmSell() {
-    if (!sellTrialId || !pkgId) return;
+    if (!sellTrial || !sellForm.packageId || !sellForm.firstLessonDate) {
+        return alert("Paket ve İlk Ders Tarihi seçimi zorunludur.");
+    }
     setSelling(true);
+    
     const body = {
-      trialId: sellTrialId,
-      packageId: pkgId,
-      period_start: periodStart ? new Date(periodStart).toISOString().slice(0, 10) : null
+        trialId: sellTrial.id,
+        packageId: sellForm.packageId,
+        paidAmount: Number(sellForm.paidAmount || 0),
+        firstLessonDate: sellForm.firstLessonDate,
+        method: sellForm.method
     };
+
+    // DOĞRU API ROTASI
     const res = await fetch("/api/admin/students/promote", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
     });
+
     const j = await res.json().catch(() => ({}));
     setSelling(false);
+
     if (!res.ok) {
-      alert(j?.error || "Satın alma başarısız");
-      return;
+        alert(j?.error || "Kayıt oluşturma başarısız");
+        return;
     }
+
+    alert(`'${sellTrial.student_name}' için kayıt başarıyla oluşturuldu!`);
     setSellOpen(false);
-    setSellTrialId(null);
-    setPkgId("");
-    setPeriodStart(activeDay);
-    await load(); // listeyi tazele
-  }
+    setSellTrial(null);
+    await load();
+}
 
   // --- ADDED: Seçili güne ait listedeki tüm trial'lara mesaj gönder
   async function sendDayMessage() {
@@ -473,59 +494,85 @@ export default function TrialsPage() {
         </table>
       </div>
 
-      {/* Paket Satın Alma MODAL */}
-      {sellOpen && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl">
+      {/* PAKET SATIN ALMA MODAL (SADELEŞTİRİLMİŞ HALİ) */}
+{sellOpen && sellTrial && (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
+        <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl">
             <h3 className="text-lg font-semibold text-gray-900">Paket Satın Al</h3>
-            <p className="mt-1 text-sm text-gray-600">Paket seçin ve dönem başlangıç tarihini belirtin.</p>
+            <p className="mt-1 text-sm text-gray-600">
+                <b>{sellTrial.student_name}</b> için paket ve ödeme bilgilerini girin.
+            </p>
 
             <div className="mt-4 space-y-3">
-              <div>
-                <label className="text-sm text-gray-700">Paket</label>
-                <select
-                  value={pkgId}
-                  onChange={(e) => setPkgId(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
-                >
-                  <option value="">Seçin…</option>
-                  {packages.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.title} — {money(p.total_price)} / {p.total_sessions} ders
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-sm text-gray-700">Dönem Başlangıcı (İlk Ders)</label>
-                <input
-                  type="date"
-                  value={periodStart}
-                  onChange={(e) => setPeriodStart(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
-                />
-                <div className="mt-1 text-xs text-gray-500">Örn: {trDay(new Date(activeDay))} günü için {activeDay}</div>
-              </div>
+                <div>
+                    <label className="text-sm font-medium text-gray-700">Paket *</label>
+                    <select
+                        value={sellForm.packageId}
+                        onChange={(e) => {
+                            const pkg = packages.find(p => p.id === e.target.value);
+                            setSellForm(f => ({ ...f, packageId: e.target.value, paidAmount: pkg ? String(pkg.total_price) : "" }))
+                        }}
+                        className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                    >
+                        <option value="">Seçin…</option>
+                        {packages.map((p) => (
+                            <option key={p.id} value={p.id}>
+                                {p.title} — {money(p.total_price)}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+
+                <div>
+                    <label className="text-sm font-medium text-gray-700">İlk Ders Tarihi *</label>
+                    <input
+                        type="date"
+                        value={sellForm.firstLessonDate}
+                        onChange={(e) => setSellForm(f => ({ ...f, firstLessonDate: e.target.value }))}
+                        className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                    />
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                        <label className="text-sm font-medium text-gray-700">Ödenen Tutar *</label>
+                        <input
+                            type="number"
+                            value={sellForm.paidAmount}
+                            onChange={(e) => setSellForm(f => ({ ...f, paidAmount: e.target.value }))}
+                            className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                        />
+                    </div>
+                    <div>
+                        <label className="text-sm font-medium text-gray-700">Ödeme Metodu *</label>
+                        <select
+                            value={sellForm.method}
+                            onChange={(e) => setSellForm(f => ({ ...f, method: e.target.value }))}
+                            className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                        >
+                            <option value="havale_eft">Havale/EFT</option>
+                            <option value="kart">Kart</option>
+                            <option value="nakit">Nakit</option>
+                        </select>
+                    </div>
+                </div>
             </div>
 
             <div className="mt-5 flex justify-end gap-2">
-              <button
-                onClick={() => setSellOpen(false)}
-                className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-50"
-              >
-                İptal
-              </button>
-              <button
-                disabled={!pkgId || selling}
-                onClick={confirmSell}
-                className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
-              >
-                {selling ? "İşleniyor…" : "Onayla"}
-              </button>
+                <button onClick={() => setSellOpen(false)} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm">
+                    İptal
+                </button>
+                <button
+                    disabled={!sellForm.packageId || !sellForm.firstLessonDate || selling}
+                    onClick={confirmSell}
+                    className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+                >
+                    {selling ? "İşleniyor…" : "Kaydı Oluştur"}
+                </button>
             </div>
-          </div>
         </div>
-      )}
+    </div>
+)}
 
       {/* Manuel Başvuru MODAL (yeni) */}
       {manualOpen && (

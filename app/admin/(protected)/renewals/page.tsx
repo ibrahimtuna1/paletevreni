@@ -2,36 +2,21 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
-type Student = {
+// Backend'den gelecek yeni API yanıtının şekli
+type StudentStatusFromAPI = {
+  // students tablosundan
   id: string;
-  student_name: string;
-  parent_name?: string | null;
-  parent_phone_e164?: string | null;
-};
-
-type ActiveRowFromAPI = {
-  student_package_id: string;
-  student_id: string;
   student_name: string;
   parent_name: string | null;
   parent_phone_e164: string | null;
+  // ogrenci_paketleri tablosundan (en son kayıt)
+  student_package_id: string | null;
   package_title: string | null;
   start_date: string | null;
-  period_end: string | null;
-  bucket: "expired" | "upcoming" | "active";
-  amount: number;
+  period_end: string | null; // Paketin hesaplanmış bitiş tarihi
 };
 
-type LastResp = {
-  item?: {
-    id: string;
-    start_date: string | null;
-    end_date: string | null; // hesaplanmış
-    package_title: string | null;
-    status: "active" | "past" | "left" | "paused";
-  } | null;
-};
-
+// Sayfada kullanılacak veri tipi (bu değişmedi)
 type Row = {
   student_id: string;
   student_name: string;
@@ -52,112 +37,60 @@ export default function RenewalsPage() {
   const [err, setErr] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
-  const [hidingLeftIds, setHidingLeftIds] = useState<Set<string>>(new Set()); // local gizleme
+  const [hidingLeftIds, setHidingLeftIds] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
 
-  // yükle
+  // --- YENİ VE BASİTLEŞTİRİLMİŞ YÜKLEME MANTIĞI ---
   useEffect(() => {
     (async () => {
       setLoading(true);
       setErr(null);
       try {
-        // 1) tüm öğrenciler (left olanlar da dönebilir; biz gizleyebileceğiz)
-        const sRes = await fetch("/api/admin/students/list", { cache: "no-store" });
-        const sJ = await sRes.json().catch(() => ({}));
-        if (!sRes.ok) throw new Error(sJ?.error || "Öğrenciler alınamadı");
-        const students: Student[] = (sJ.items || []).map((x: any) => ({
-          id: x.id,
-          student_name: x.student_name,
-          parent_name: x.parent_name ?? null,
-          parent_phone_e164: x.parent_phone_e164 ?? null,
-        }));
+        // 1. Tek ve güçlü bir API isteği ile tüm veriyi çekiyoruz.
+        // Bu endpoint, tüm öğrencileri ve her birinin en son paket bilgisini getirmeli.
+        const res = await fetch("/api/admin/renewals/student-status-list", { cache: "no-store" });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(j?.error || "Kayıt verileri alınamadı");
+        
+        const itemsFromAPI: StudentStatusFromAPI[] = j.items || [];
 
-        // 2) aktif dönemleri (bitiş ve bucket hazır)
-        const aRes = await fetch("/api/admin/renewals/list", { cache: "no-store" });
-        const aJ = await aRes.json().catch(() => ({}));
-        if (!aRes.ok) throw new Error(aJ?.error || "Aktif kayıtlar alınamadı");
-        const activeMap = new Map<string, ActiveRowFromAPI>();
-        (aJ.items || []).forEach((r: ActiveRowFromAPI) => activeMap.set(r.student_id, r));
-
-        // 3) tek liste oluştur: aktif varsa ordan, yoksa last endpoint ile son dönemi sorgula
-        const base: Row[] = students.map((s) => {
-          const a = activeMap.get(s.id);
-          if (a) {
-            return {
-              student_id: s.id,
-              student_name: a.student_name,
-              parent_name: a.parent_name,
-              parent_phone_e164: a.parent_phone_e164,
-              package_title: a.package_title,
-              start_date: a.start_date,
-              period_end: a.period_end,
-              bucket: a.bucket,
-              student_package_id: a.student_package_id,
-            };
+        // 2. Gelen veriyi frontend'de işleyip 'bucket' (durum) ataması yapıyoruz.
+        const today = new Date().toISOString().slice(0, 10);
+        const processedRows: Row[] = itemsFromAPI.map((item) => {
+          let bucket: Row["bucket"] = "none";
+          
+          if (item.period_end) {
+            const diff =
+              (new Date(item.period_end + "T00:00:00").getTime() - new Date(today + "T00:00:00").getTime()) /
+              86400000;
+            bucket = diff < 0 ? "expired" : diff <= 7 ? "upcoming" : "active";
           }
-          // geçici placeholder – birazdan last ile dolduracağız
+          
           return {
-            student_id: s.id,
-            student_name: s.student_name,
-            parent_name: s.parent_name ?? null,
-            parent_phone_e164: s.parent_phone_e164 ?? null,
-            package_title: null,
-            start_date: null,
-            period_end: null,
-            bucket: "none",
-            student_package_id: null,
+            student_id: item.id,
+            student_name: item.student_name,
+            parent_name: item.parent_name,
+            parent_phone_e164: item.parent_phone_e164,
+            package_title: item.package_title,
+            start_date: item.start_date,
+            period_end: item.period_end,
+            bucket: bucket,
+            student_package_id: item.student_package_id,
           };
         });
 
-        // 4) aktif olmayanlar için son dönemi getir (toplu, Promise.all)
-        const needLast = base.filter((r) => r.bucket === "none");
-        const lastResponses = await Promise.all(
-          needLast.map((r) =>
-            fetch(
-              `/api/admin/studentpackages/last?student_id=${encodeURIComponent(
-                r.student_id
-              )}`,
-              { cache: "no-store" }
-            )
-              .then((res) => res.json().catch(() => ({})))
-              .catch(() => ({}))
-          )
-        );
+        setRows(processedRows);
 
-        needLast.forEach((row, idx) => {
-          const jr: LastResp = lastResponses[idx] || {};
-          const it = jr?.item;
-          if (it?.start_date || it?.end_date) {
-            const end = it?.end_date || null;
-            const today = new Date().toISOString().slice(0, 10);
-            let bucket: Row["bucket"] = "active";
-            if (!end) bucket = "none";
-            else {
-              const diff =
-                (new Date(end + "T00:00:00").getTime() -
-                  new Date(today + "T00:00:00").getTime()) /
-                86400000;
-              bucket = diff < 0 ? "expired" : diff <= 7 ? "upcoming" : "active";
-            }
-            row.package_title = it?.package_title || null;
-            row.start_date = it?.start_date || null;
-            row.period_end = it?.end_date || null;
-            row.bucket = bucket;
-          } else {
-            row.bucket = "none"; // hiç paket almamış
-          }
-        });
-
-        setRows(base);
       } catch (e: any) {
-        setErr(e.message || "Hata");
+        setErr(e.message || "Bir hata oluştu");
       } finally {
         setLoading(false);
       }
     })();
   }, []);
 
-  // filtreleme + sıralama (önce upcoming, sonra expired, sonra active, sonra none)
-  const view = useMemo(() => {
+  // filtreleme + sıralama (öncelik: upcoming → expired → active → none)
+  const filtered = useMemo(() => {
     const prio = (b: Row["bucket"]) =>
       b === "upcoming" ? 0 : b === "expired" ? 1 : b === "active" ? 2 : 3;
     const text = q.trim().toLocaleLowerCase("tr");
@@ -173,11 +106,21 @@ export default function RenewalsPage() {
       .sort((a, b) => {
         const d = prio(a.bucket) - prio(b.bucket);
         if (d !== 0) return d;
-        const aname = (a.student_name ?? "").toString();
-        const bname = (b.student_name ?? "").toString();
-        return aname.localeCompare(bname, "tr", { sensitivity: "base" });
+        return (a.student_name || "").localeCompare(b.student_name || "", "tr", { sensitivity: "base" });
       });
   }, [rows, q, hidingLeftIds]);
+
+  // gruplar
+  const groups = useMemo(() => {
+    const g = {
+      upcoming: [] as Row[],
+      expired: [] as Row[],
+      active: [] as Row[],
+      none: [] as Row[],
+    };
+    for (const r of filtered) g[r.bucket].push(r);
+    return g;
+  }, [filtered]);
 
   async function markLeft(studentId: string) {
     if (!confirm("Öğrenciyi 'ayrıldı' yapalım mı? (Geçmiş silinmez)")) return;
@@ -191,7 +134,6 @@ export default function RenewalsPage() {
       alert(j?.error || "Ayrıldı olarak işaretlenemedi");
       return;
     }
-    // listeden gizle
     setHidingLeftIds((s) => new Set(s).add(studentId));
   }
 
@@ -213,36 +155,151 @@ export default function RenewalsPage() {
 
   const bucketChip = (b: Row["bucket"]) => {
     if (b === "upcoming")
-      return (
-        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
-          Yaklaşıyor
-        </span>
-      );
+      return <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">Yaklaşıyor</span>;
     if (b === "expired")
-      return (
-        <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-900">
-          Geçmiş
-        </span>
-      );
+      return <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-900">Geçmiş</span>;
     if (b === "active")
-      return (
-        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-900">
-          Aktif
-        </span>
-      );
-    return (
-      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-gray-900">
-        Kayıt Yok
-      </span>
-    );
+      return <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-900">Aktif</span>;
+    return <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-gray-900">Kayıt Yok</span>;
   };
 
-  const rowTone = (b: Row["bucket"]) =>
-    b === "upcoming"
-      ? "bg-amber-50"
-      : b === "expired"
-      ? "bg-rose-50"
-      : "bg-white";
+  const Section = ({
+    title,
+    tone,
+    items,
+    collapsedByDefault = false,
+  }: {
+    title: string;
+    tone: "amber" | "rose" | "emerald" | "gray";
+    items: Row[];
+    collapsedByDefault?: boolean;
+  }) => {
+    const [open, setOpen] = useState(!collapsedByDefault);
+    const toneBg =
+      tone === "amber" ? "bg-amber-50 border-amber-200" :
+      tone === "rose" ? "bg-rose-50 border-rose-200" :
+      tone === "emerald" ? "bg-emerald-50 border-emerald-200" :
+      "bg-gray-50 border-gray-200";
+
+    return (
+      <div className="rounded-2xl border bg-white shadow-sm">
+        <div className={`flex items-center justify-between rounded-t-2xl border-b px-4 py-3 ${toneBg}`}>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
+            <span className="rounded-full bg-white/80 px-2 py-0.5 text-xs font-semibold text-gray-900">{items.length}</span>
+          </div>
+          <button
+            onClick={() => setOpen((o) => !o)}
+            className="text-xs text-gray-700 underline underline-offset-2"
+          >
+            {open ? "Gizle" : "Göster"}
+          </button>
+        </div>
+
+        {open && (
+          viewMode === "cards" ? (
+            <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+              {items.map((r) => (
+                <div key={r.student_id} className="rounded-xl border border-gray-200 p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="font-semibold text-gray-900">{r.student_name}</div>
+                    {bucketChip(r.bucket)}
+                  </div>
+                  <div className="mt-1 text-sm text-gray-700">
+                    <div className="truncate">{r.parent_name || "—"} • {r.parent_phone_e164 || "—"}</div>
+                    <div className="truncate">Paket: {r.package_title || "—"}</div>
+                    <div className="text-gray-800">
+                      {fmt(r.start_date)} — {fmt(r.period_end)}
+                    </div>
+                  
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Link
+                        href={`/admin/renewals/new?studentId=${r.student_id}${r.period_end ? `&lastEndDate=${r.period_end}` : ''}`}
+                      className="rounded-md bg-black px-2 py-1 text-xs font-medium text-white hover:opacity-90"
+                    >
+                      Yenile
+                    </Link>
+                    <button
+                      onClick={() => sendSMS(r)}
+                      className="rounded-md border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50"
+                    >
+                      SMS
+                    </button>
+                    <button
+                      onClick={() => markLeft(r.student_id)}
+                      className="rounded-md border border-rose-200 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
+                      title="Öğrenciyi ayrıldı yap ve listeden çıkar"
+                    >
+                      Ayrıldı
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {items.length === 0 && <div className="p-4 text-sm text-gray-700">Kayıt yok.</div>}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full">
+                <thead className="bg-gray-50 text-left text-[12px] font-semibold uppercase tracking-wide text-gray-800">
+                  <tr>
+                    <th className="px-4 py-3">Öğrenci</th>
+                    <th className="px-4 py-3">Veli</th>
+                    <th className="px-4 py-3">Paket</th>
+                    <th className="px-4 py-3">İlk–Son Ders</th>
+                    <th className="px-4 py-3">Durum</th>
+                    <th className="px-4 py-3">Aksiyon</th>
+                  </tr>
+                </thead>
+                <tbody className="text-[15px] text-gray-900">
+                  {items.map((r) => (
+                    <tr key={r.student_id} className="border-t border-gray-100">
+                      <td className="px-4 py-3 font-semibold">{r.student_name}</td>
+                      <td className="px-4 py-3 text-sm">
+                        {r.parent_name || "—"} • {r.parent_phone_e164 || "—"}
+                      </td>
+                      <td className="px-4 py-3 text-sm">{r.package_title || "—"}</td>
+                      <td className="px-4 py-3 text-sm">
+                        {fmt(r.start_date)} — {fmt(r.period_end)}
+                      </td>
+                      <td className="px-4 py-3">{bucketChip(r.bucket)}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-2">
+                          <Link
+                              href={`/admin/renewals/new?studentId=${r.student_id}${r.period_end ? `&lastEndDate=${r.period_end}` : ''}`}
+
+                            className="rounded-md bg-black px-2 py-1 text-xs font-medium text-white hover:opacity-90"
+                          >
+                            Yenile
+                          </Link>
+                          <button
+                            onClick={() => sendSMS(r)}
+                            className="rounded-md border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50"
+                          >
+                            SMS
+                          </button>
+                          <button
+                            onClick={() => markLeft(r.student_id)}
+                            className="rounded-md border border-rose-200 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
+                            title="Öğrenciyi ayrıldı yap ve listeden çıkar"
+                          >
+                            Ayrıldı
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {items.length === 0 && (
+                    <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-700">Kayıt yok.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -250,15 +307,24 @@ export default function RenewalsPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Kayıt Yenilemeler</h1>
           <p className="text-sm text-gray-700">
-            Tüm öğrenciler tek listede. Yaklaşanlar sarı, geçmişler kırmızı.
+            Yaklaşanlar (sarı) ve geçmiş (kırmızı) üstte; tüm liste gruplu.
           </p>
         </div>
-        <Link
-          href="/admin/renewals/new"
-          className="rounded-lg bg-black px-3 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
-          + Elle Yenile
-        </Link>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setViewMode((m) => (m === "cards" ? "table" : "cards"))}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 hover:bg-gray-50"
+            title="Görünümü değiştir"
+          >
+            {viewMode === "cards" ? "Tablo görünümü" : "Kart görünümü"}
+          </button>
+          <Link
+            href="/admin/renewals/new"
+            className="rounded-lg bg-black px-3 py-2 text-sm font-medium text-white hover:opacity-90"
+          >
+            + Elle Yenile
+          </Link>
+        </div>
       </div>
 
       <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
@@ -276,73 +342,20 @@ export default function RenewalsPage() {
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm">
-        <table className="min-w-full">
-          <thead className="bg-gray-50 text-left text-[12px] font-semibold uppercase tracking-wide text-gray-800">
-            <tr>
-              <th className="px-4 py-3">Öğrenci</th>
-              <th className="px-4 py-3">Veli</th>
-              <th className="px-4 py-3">Paket</th>
-              <th className="px-4 py-3">İlk–Son Ders</th>
-              <th className="px-4 py-3">Durum</th>
-              <th className="px-4 py-3">Aksiyon</th>
-            </tr>
-          </thead>
-          <tbody className="text-[15px] text-gray-900">
-            {loading && (
-              <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-gray-700">
-                  Yükleniyor…
-                </td>
-              </tr>
-            )}
-            {!loading &&
-              view.map((r) => (
-                <tr key={r.student_id} className={`border-t border-gray-100 ${rowTone(r.bucket)}`}>
-                  <td className="px-4 py-3 font-semibold">{r.student_name}</td>
-                  <td className="px-4 py-3 text-sm">
-                    {r.parent_name || "—"} • {r.parent_phone_e164 || "—"}
-                  </td>
-                  <td className="px-4 py-3 text-sm">{r.package_title || "—"}</td>
-                  <td className="px-4 py-3 text-sm">
-                    {fmt(r.start_date)} — {fmt(r.period_end)}
-                  </td>
-                  <td className="px-4 py-3">{bucketChip(r.bucket)}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-2">
-                      <Link
-                        href={`/admin/renewals/new?studentId=${r.student_id}`}
-                        className="rounded-md bg-black px-2 py-1 text-xs font-medium text-white hover:opacity-90"
-                      >
-                        Yenile
-                      </Link>
-                      <button
-                        onClick={() => sendSMS(r)}
-                        className="rounded-md border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50"
-                      >
-                        SMS
-                      </button>
-                      <button
-                        onClick={() => markLeft(r.student_id)}
-                        className="rounded-md border border-rose-200 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
-                        title="Öğrenciyi ayrıldı yap ve listeden çıkar"
-                      >
-                        Öğrenci ayrıldı
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            {!loading && view.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-gray-700">
-                  Kayıt yok.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      {loading && (
+        <div className="rounded-2xl border border-gray-200 bg-white p-6 text-center text-gray-700 shadow-sm">
+          Yükleniyor…
+        </div>
+      )}
+
+      {!loading && (
+        <div className="space-y-4">
+          <Section title="Yaklaşan (7 gün içinde)" tone="amber" items={groups.upcoming} />
+          <Section title="Süresi Geçmiş" tone="rose" items={groups.expired} />
+          <Section title="Aktif" tone="emerald" items={groups.active} collapsedByDefault />
+          <Section title="Kayıt Yok" tone="gray" items={groups.none} collapsedByDefault />
+        </div>
+      )}
     </div>
   );
 }

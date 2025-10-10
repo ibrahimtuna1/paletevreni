@@ -1,52 +1,43 @@
-import { NextRequest, NextResponse } from "next/server";
-import { serverSupabase } from "@/lib/supabaseServer";
-export const revalidate = 0;
+// app/api/admin/renewals/list/route.ts
+import { NextResponse } from "next/server";
+import { getSupabase } from "@/lib/supabase/server"; // <-- ENV yok
 
-const toYMD=(d:Date)=>`${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}-${String(d.getUTCDate()).padStart(2,"0")}`;
-const addDays=(ymd:string,days:number)=>{const d=new Date(ymd+"T00:00:00Z"); d.setUTCDate(d.getUTCDate()+days); return toYMD(d);};
+export async function GET() {
+  try {
+    const supabase = getSupabase();
 
-export async function GET(req: NextRequest) {
-  const supabase = serverSupabase();
-  const now = new Date(); const today = toYMD(now);
+    const { data, error } = await supabase
+      .from("v_yaklasan_yenilemeler")
+      .select("*");
 
-  // aktif paketler + öğrenci + paket
-  const { data, error } = await supabase
-    .from("student_packages")
-    .select(`
-      id, student_id, start_date, status, sessions_total, price_at_purchase,
-      student:students ( id, student_name, parent_name, parent_phone_e164 ),
-      package:packages ( id, title, valid_weeks, total_sessions )
-    `)
-    .eq("status", "active")
-    .order("start_date", { ascending: true });
+    if (error) throw error;
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    const today = new Date().toISOString().slice(0, 10);
+    const items = (data || []).map((x: any) => {
+      const end = x.bitis_tarihi as string | null;
+      let bucket: "upcoming" | "expired" | "active" = "active";
+      if (end) {
+        const diff =
+          (new Date(end + "T00:00:00").getTime() -
+            new Date(today + "T00:00:00").getTime()) /
+          86400000;
+        bucket = diff < 0 ? "expired" : diff <= 7 ? "upcoming" : "active";
+      }
+      return {
+        student_id: x.ogrenci_id,
+        student_name: x.ogrenci_adi,
+        parent_name: x.veli_adi,
+        parent_phone_e164: x.veli_tel,
+        package_title: x.paket_adi,
+        start_date: x.baslangic_tarihi,
+        period_end: x.bitis_tarihi,
+        bucket,
+        student_package_id: x.ogrenci_paketi_id,
+      };
+    });
 
-  const items = (data||[]).map((row:any) => {
-    const weeks = row.package?.valid_weeks ?? row.package?.total_sessions ?? row.sessions_total ?? 4;
-    const period_end = row.start_date ? addDays(row.start_date, Math.max(0, weeks*7 - 1)) : null;
-
-    let bucket: "expired"|"upcoming"|"active" = "active";
-    if (period_end) {
-      const diff = (new Date(period_end).getTime() - new Date(today).getTime()) / 86400000;
-      if (diff < 0) bucket = "expired";
-      else if (diff <= 7) bucket = "upcoming";
-      else bucket = "active";
-    }
-
-    return {
-      student_package_id: row.id,
-      student_id: row.student?.id,
-      student_name: row.student?.student_name,
-      parent_name: row.student?.parent_name,
-      parent_phone_e164: row.student?.parent_phone_e164,
-      package_title: row.package?.title,
-      start_date: row.start_date,
-      period_end,
-      bucket,
-      amount: Number(row.price_at_purchase || 0),
-    };
-  });
-
-  return NextResponse.json({ items });
+    return NextResponse.json({ items });
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message || "Hata" }, { status: 500 });
+  }
 }
