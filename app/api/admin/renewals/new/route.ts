@@ -1,32 +1,37 @@
 // app/api/admin/renewals/new/route.ts
-import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+import { NextResponse } from "next/server";
+// DÜZELTME: Kendi client'ımızı oluşturmak yerine, merkezi admin client'ını import ediyoruz.
+import { supabaseAdmin } from "@/lib/supabase/serverAdmin";
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { student_id, paket_id, baslangic_tarihi, alis_fiyati, hafta_sayisi } = body;
+    // Frontend'den gelen parametreleri alıyoruz
+    const { student_id, package_id, start_date, method, note } = body;
 
-    if (!student_id) return NextResponse.json({ error: "student_id zorunlu" }, { status: 400 });
+    if (!student_id || !package_id) {
+      return NextResponse.json({ error: "Öğrenci ve paket seçimi zorunludur." }, { status: 400 });
+    }
+    
+    // DÜZELTME: Doğrudan INSERT yapmak yerine, tüm işi yapan RPC fonksiyonumuzu çağırıyoruz.
+    // Bu fonksiyon bitiş tarihini doğru hesaplar ve ödeme kaydını otomatik oluşturur.
+    const { data, error } = await supabaseAdmin.rpc("create_new_subscription", {
+      p_student_id: student_id,
+      p_package_id: package_id,
+      p_payment_method: method || 'havale_eft', // Varsayılan bir metot belirleyelim
+      p_note: note || 'Elle yenileme ekranından oluşturuldu.', // Bir not ekleyelim
+      p_start_date: start_date || null // Opsiyonel başlangıç tarihi
+    });
 
-    const insertPayload: any = {
-      ogrenci_id: student_id,
-      paket_id: paket_id ?? null,
-    };
-    if (baslangic_tarihi) insertPayload.baslangic_tarihi = baslangic_tarihi;
-    if (alis_fiyati != null) insertPayload.alis_fiyati = alis_fiyati;
-    if (hafta_sayisi != null) insertPayload.hafta_sayisi = hafta_sayisi;
+    if (error) {
+        console.error("RPC error from renewals/new:", error);
+        throw new Error(error.message);
+    }
+    
+    // Frontend'e yeni oluşturulan paket kaydının ID'sini dönebiliriz.
+    return NextResponse.json({ item: { id: data } });
 
-    const { data, error } = await supabase
-      .from("ogrenci_paketleri")
-      .insert(insertPayload)
-      .select("id, ogrenci_id, paket_id, baslangic_tarihi, hafta_sayisi")
-      .single();
-
-    if (error) throw error;
-    return NextResponse.json({ item: data });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Hata" }, { status: 500 });
   }
