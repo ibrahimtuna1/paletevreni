@@ -368,7 +368,7 @@ export default function Hero() {
               Paketlerimiz
             </a>
             {/* CHANGED: Videolar -> Galerimiz, href -> /route/galerimiz */}
-            <a href="/route/galerimiz" className="btn-gpill from-cyan-500 via-blue-500 to-cyan-500">
+            <a href="/galerimiz" className="btn-gpill from-cyan-500 via-blue-500 to-cyan-500">
               Galerimiz
             </a>
             <a href="/hakkimizda" className="btn-gpill from-pink-500 via-violet-500 to-pink-500">
