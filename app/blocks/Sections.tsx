@@ -181,7 +181,7 @@ function SlideIn({
 
 /** ==== PROGRAM & ÜCRET – 1/3/6 Aylık + 30 Günlük Sayaç Kampanyası ==== */
 function Pricing() {
-  const MONTHLY = 1500;
+  const MONTHLY = 1750;
 
   // Kampanya bitişi: 30 gün sonrası 23:59:59
   const campaignUntil = (() => {
